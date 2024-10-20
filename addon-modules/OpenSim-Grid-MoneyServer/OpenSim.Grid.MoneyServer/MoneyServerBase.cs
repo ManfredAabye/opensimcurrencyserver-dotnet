@@ -78,6 +78,7 @@ namespace OpenSim.Grid.MoneyServer
         {
             m_console = new LocalConsole("MoneyServer ");
             MainConsole.Instance = m_console;
+            m_log.Info("[MONEY SERVER]: Starting...");
         }
 
 
