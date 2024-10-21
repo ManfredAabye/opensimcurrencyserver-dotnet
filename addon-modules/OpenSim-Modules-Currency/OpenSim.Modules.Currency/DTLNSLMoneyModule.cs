@@ -37,6 +37,7 @@ using OpenSim.Region.Framework.Scenes;
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using NSL.Certificate.Tools;
 using NSL.Network.XmlRpc;
+using System.IO;
 
 [assembly: Addin("DTLNSLMoneyModule", "1.0")]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
@@ -292,6 +293,8 @@ namespace OpenSim.Modules.Currency
 
         // Test 2023
 
+        // Test 2023
+
         /// <summary>The m RPC handlers</summary>
         private Dictionary<string, XmlRpcMethod> m_rpcHandlers;
 
@@ -303,7 +306,7 @@ namespace OpenSim.Modules.Currency
         //MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
         //    m_log.Info("[MONEY MODULE]: processPHP: processPHP");
         //}
-
+        /*
         public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
         {
             m_log.InfoFormat("[MONEY MODULE]: Received request at {0}", request.RawUrl);
@@ -319,7 +322,59 @@ namespace OpenSim.Modules.Currency
                 response.StatusCode = 500; // Interner Serverfehler
                 response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
+        }*/
+
+        /*
+         * Um XML-RPC-Debugging einzubauen, die die Anfragen in eine Datei namens xmlrpc_debug.log speichert, kannst du den Code der processPHP-Methode wie folgt anpassen. 
+         * Hierbei wird der empfangene XML-RPC-Request in die Logdatei geschrieben, bevor die Verarbeitung erfolgt.
+         */
+
+        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+        {
+            m_log.InfoFormat("[MONEY MODULE]: Received request at {0}", request.RawUrl);
+
+            // Logge den XML-RPC-Request in eine Datei
+            LogXmlRpcRequest(request);
+
+            try
+            {
+                MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+                m_log.Info("[MONEY MODULE]: Successfully processed request.");
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: Error processing request: {0}", ex.Message);
+                response.StatusCode = 500; // Interner Serverfehler
+                response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
+            }
         }
+
+        private void LogXmlRpcRequest(IOSHttpRequest request)
+        {
+            try
+            {
+                // Erstelle einen Dateipfad für das Log
+                string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xmlrpc_debug.log");
+
+                // Lies den Request-Body
+                string requestBody;
+                using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
+                {
+                    requestBody = reader.ReadToEnd();
+                }
+
+                // Bereite den Logeintrag vor
+                string logEntry = $"{DateTime.UtcNow}: {request.RawUrl}\n{requestBody}\n\n";
+
+                // Schreibe den Logeintrag in die Datei
+                File.AppendAllText(logFilePath, logEntry);
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: Error logging XML-RPC request: {0}", ex.Message);
+            }
+        }
+
 
         private int CalculateCost(int currencyAmount)
         {
