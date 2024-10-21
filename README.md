@@ -17,6 +17,6 @@ From Original DTL/NSL Money Server for X64/Unix/DotNet and Windows 10 64bit with
 by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet8.
 
 ## TODO: 
-helpers:
+helpers Robust.ini:
 
      economy = ${Const|BaseURL}:8008
