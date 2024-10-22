@@ -16,7 +16,7 @@ opensim.currency - modified
 
 From Original DTL/NSL Money Server for X64/Unix/DotNet and Windows 10/11 64bit with XAMPP/MariaDB 
 
-by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet8.
+by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8.
 
 ## TODO: 
 helpers Robust.ini:
