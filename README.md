@@ -8,7 +8,7 @@
 
 .
 
-OpenSim Currency Server for OpenSim 0.9.3.x Dev (X64/Unix/DotNet8)
+OpenSim Currency Server for OpenSim 0.9.3.x Dev (X64/Unix/DotNet6) & (X64/Unix/DotNet8)
 
 opensim.currency - modified
 
