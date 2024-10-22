@@ -4,7 +4,7 @@ using System.Net;
 using System.Text;
 using System.Collections.Generic;
 
-// XmlRpcServer V 1.0.3
+// XmlRpcServer V 1.0.7
 
 class Program
 {
@@ -35,14 +35,19 @@ class Program
             Console.WriteLine("INI-Datei nicht gefunden. Verwende Standardwerte.");
         }
 
+        // Ausgabe der verwendeten Adresse und des Ports
+        Console.WriteLine($"Using address: {address}, port: {port}");
+
         // Starten des HttpListener mit den konfigurierten Werten
         HttpListener listener = new HttpListener();
         string url = $"http://{address}:{port}/";
-        listener.Prefixes.Add(url + "currency.php/");
-        listener.Prefixes.Add(url + "landtool.php/");
+
+        // Sicherstellen, dass alle Präfixe mit '/' enden
+        listener.Prefixes.Add(url + "currency.php/"); // Endet mit /
+        listener.Prefixes.Add(url + "landtool.php/"); // Endet mit /
         listener.Start();
 
-        Console.WriteLine($"Warte auf eingehende XML-RPC-Anfragen unter {url} ...");
+        Console.WriteLine($"Warte auf eingehende Anfragen unter {url} ...");
 
         while (true)
         {
@@ -55,17 +60,47 @@ class Program
             using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
             {
                 string requestBody = reader.ReadToEnd();
-                Console.WriteLine("Empfangene Anfrage:");
-                Console.WriteLine(requestBody);
+                
+                // Überprüfe, ob die Anfrage XML-RPC enthält
+                bool isXmlRpcRequest = requestBody.Contains("xmlrpc");
 
-                // Schreibe die Anfrage in unterschiedliche Dateien je nach Ziel-URL.
-                if (request.Url.AbsolutePath.EndsWith("/currency.php/"))
+                // Prüfe die URL der Anfrage
+                if (request.Url.AbsolutePath.EndsWith("/currency.php") || request.Url.AbsolutePath.EndsWith("/currency.php/"))
                 {
                     File.AppendAllText("xmlrpc_currency.log", requestBody + Environment.NewLine);
+                    
+                    // Ausgabe in der Konsole je nach Anfrageart
+                    if (isXmlRpcRequest)
+                    {
+                        Console.WriteLine("XMLRPC empfangene Anfrage (currency.php):");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Unbekannte empfangene Anfrage (currency.php):");
+                    }
+                    Console.WriteLine(requestBody);
                 }
-                else if (request.Url.AbsolutePath.EndsWith("/landtool.php/"))
+                else if (request.Url.AbsolutePath.EndsWith("/landtool.php") || request.Url.AbsolutePath.EndsWith("/landtool.php/"))
                 {
                     File.AppendAllText("xmlrpc_landtool.log", requestBody + Environment.NewLine);
+                    
+                    // Ausgabe in der Konsole je nach Anfrageart
+                    if (isXmlRpcRequest)
+                    {
+                        Console.WriteLine("XMLRPC empfangene Anfrage (landtool.php):");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Unbekannte empfangene Anfrage (landtool.php):");
+                    }
+                    Console.WriteLine(requestBody);
+                }
+                else
+                {
+                    // Alle anderen Anfragen in die allgemeine Logdatei
+                    File.AppendAllText("xmlrpc_general.log", requestBody + Environment.NewLine);
+                    Console.WriteLine("Unbekannte empfangene Anfrage:");
+                    Console.WriteLine(requestBody);
                 }
             }
 
