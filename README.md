@@ -16,7 +16,7 @@ Ubuntu 18 = DOTNET 6.0 - Ubuntu 20+ DOTNET 8.0
 
 opensim.currency - modified
 
-From Original DTL/NSL Money Server for X64/Unix/DotNet and Windows 10/11 64bit with XAMPP/MariaDB 
+From Original DTL/NSL Money Server for X64/Unix/DotNet and Windows 10/11 64bit with XAMPP/MariaDB (X64/Unix/DotNet6) & (X64/Unix/DotNet8)
 
 by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8.
 
