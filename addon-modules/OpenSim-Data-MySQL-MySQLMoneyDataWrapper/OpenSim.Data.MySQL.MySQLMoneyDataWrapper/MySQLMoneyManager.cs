@@ -1754,5 +1754,88 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
             return bRet;
         }
 
+        public bool UserExists(string userID)
+        {
+            try
+            {
+                UserInfo userInfo = fetchUserInfo(userID);
+                return userInfo != null;
+            }
+            catch (Exception ex)
+            {
+                m_log.Error(ex);
+                return false;
+            }
+        }
+
+        public bool UpdateUserInfo(string userID, UserInfo updatedInfo)
+        {
+            UserInfo existingInfo = fetchUserInfo(userID);
+            if (existingInfo != null)
+            {
+                updatedInfo.UserID = userID; // Ensure the userID is updated correctly
+                return updateUserInfo(updatedInfo);
+            }
+            else
+            {
+                return false; // User not found
+            }
+        }
+
+        public bool DeleteUser(string userID)
+        {
+            string sql = "DELETE FROM " + Table_of_UserInfo + " WHERE user = ?userID;";
+            MySqlCommand cmd = new MySqlCommand(sql, dbcon);
+            cmd.Parameters.AddWithValue("?userID", userID);
+
+            return cmd.ExecuteNonQuery() > 0;
+        }
+
+        public void LogTransactionError(UUID transactionID, string errorMessage)
+        {
+            m_log.ErrorFormat("[MONEY MODULE]: Transaction {0} failed with error: {1}", transactionID, errorMessage);
+        }
+
+        public IEnumerable<TransactionData> GetTransactionHistory(string userID, int startTime, int endTime)
+        {
+            List<TransactionData> transactionHistory = new List<TransactionData>();
+
+            // Assuming you have a database connection and a query to fetch transactions
+            string sql = "SELECT * FROM " + Table_of_Transactions + " WHERE user = ?userID AND time >= ?startTime AND time <= ?endTime;";
+            MySqlCommand cmd = new MySqlCommand(sql, dbcon);
+            cmd.Parameters.AddWithValue("?userID", userID);
+            cmd.Parameters.AddWithValue("?startTime", startTime);
+            cmd.Parameters.AddWithValue("?endTime", endTime);
+
+            using (MySqlDataReader r = cmd.ExecuteReader())
+            {
+                while (r.Read())
+                {
+                    TransactionData transaction = new TransactionData();
+                    // Assuming you have properties in TransactionData class to match the columns in the database table
+                    transaction.TransUUID = UUID.Parse((string)r["transuuid"]);
+                    transaction.Sender = (string)r["sender"];
+                    transaction.Receiver = (string)r["receiver"];
+                    transaction.Amount = Convert.ToInt32(r["amount"]);
+                    transaction.ObjectUUID = (string)r["objectuuid"];
+                    transaction.ObjectName = (string)r["objectname"];
+                    transaction.RegionHandle = (string)r["regionhandle"];
+                    transaction.Type = Convert.ToInt32(r["type"]);
+                    transaction.Time = Convert.ToInt32(r["time"]);
+                    transaction.Status = Convert.ToInt32(r["status"]);
+                    transaction.SecureCode = (string)r["securecode"];
+                    transaction.CommonName = (string)r["commonname"];
+                    transaction.Description = (string)r["description"];
+
+                    transactionHistory.Add(transaction);
+                }
+                r.Close();
+            }
+            cmd.Dispose();
+
+            return transactionHistory;
+        }
+
+
     }
 }

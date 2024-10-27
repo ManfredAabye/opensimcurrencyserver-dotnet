@@ -16,12 +16,9 @@
  */
 
 
-#pragma warning disable IDE1006
-
 using OpenMetaverse;
-
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
-
+using System.Collections.Generic;
 
 namespace OpenSim.Grid.MoneyServer
 {
@@ -105,5 +102,28 @@ namespace OpenSim.Grid.MoneyServer
         /// <param name="userID">The user identifier.</param>
         UserInfo FetchUserInfo(string userID);
 
+        /// <summary>Checks if a user exists.</summary>
+        /// <param name="userID">The user identifier.</param>
+        bool UserExists(string userID);
+
+        /// <summary>Updates user information.</summary>
+        /// <param name="userID">The user identifier.</param>
+        /// <param name="updatedInfo">The updated user information.</param>
+        bool UpdateUserInfo(string userID, UserInfo updatedInfo);
+
+        /// <summary>Deletes a user from the database.</summary>
+        /// <param name="userID">The user identifier.</param>
+        bool DeleteUser(string userID);
+
+        /// <summary>Logs transaction-related errors or changes for troubleshooting.</summary>
+        /// <param name="transactionID">The transaction identifier.</param>
+        /// <param name="errorMessage">The error message or change note.</param>
+        void LogTransactionError(UUID transactionID, string errorMessage);
+
+        /// <summary>Gets a list of transactions for a user within a specified time frame.</summary>
+        /// <param name="userID">The user identifier.</param>
+        /// <param name="startTime">The start time.</param>
+        /// <param name="endTime">The end time.</param>
+        IEnumerable<TransactionData> GetTransactionHistory(string userID, int startTime, int endTime);
     }
 }

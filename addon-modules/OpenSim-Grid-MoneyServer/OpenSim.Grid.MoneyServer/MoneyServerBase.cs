@@ -78,30 +78,51 @@ namespace OpenSim.Grid.MoneyServer
         {
             m_console = new LocalConsole("MoneyServer ");
             MainConsole.Instance = m_console;
-            m_log.Info("[MONEY SERVER]: Starting...");
+            //m_log.Info("[MONEY SERVER]: Starting...");
+            m_log.Info("[MONEY SERVER]: Initializing Money Server module and loading configurations...");
         }
-
 
         /// <summary>
         /// Work
         /// </summary>
         public void Work()
         {
-            //The timer checks the transactions table every 60 seconds
+            // Create a new timer to check transactions every 60 seconds
             Timer checkTimer = new Timer
             {
                 Interval = 60 * 1000,
                 Enabled = true
             };
-            checkTimer.Elapsed += new ElapsedEventHandler(CheckTransaction);
-            checkTimer.Start();
 
-            while (true)
+            // Add event handler to check transactions
+            checkTimer.Elapsed += CheckTransaction;
+
+            try
             {
-                m_console.Prompt();
+                // Start the timer
+                checkTimer.Start();
+
+                // Run the console prompt loop
+                while (true)
+                {
+                    m_console.Prompt();
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log any exceptions that occur
+                m_log.ErrorFormat("Error in Work: {0}", ex.Message);
+            }
+            finally
+            {
+                // Stop the timer if it's still running
+                if (checkTimer != null && checkTimer.Enabled)
+                {
+                    checkTimer.Stop();
+                    checkTimer.Dispose();
+                }
             }
         }
-
 
         /// <summary>
         /// Check the transactions table, set expired transaction state to failed
@@ -113,7 +134,6 @@ namespace OpenSim.Grid.MoneyServer
             int deadTime = unixEpochTime - DEAD_TIME;
             m_moneyDBService.SetTransExpired(deadTime);
         }
-
 
         /// <summary>
         /// Startup Specific

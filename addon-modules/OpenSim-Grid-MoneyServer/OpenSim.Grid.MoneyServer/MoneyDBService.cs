@@ -22,11 +22,12 @@ using OpenSim.Modules.Currency;
 using log4net;
 using System.Reflection;
 using OpenMetaverse;
+using OpenSim.Framework;
 
 
 namespace OpenSim.Grid.MoneyServer
 {
-    class MoneyDBService : IMoneyDBService
+    class MoneyDBService :  IMoneyDBService
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private string m_connect;
@@ -691,6 +692,130 @@ namespace OpenSim.Grid.MoneyServer
             {
                 m_log.Error(e);
                 return -1;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+
+        // Test 2024
+
+        public bool UserExists_old(string userID)
+        {
+            throw new NotImplementedException();
+        }
+        public bool UserExists(string userID)
+        {
+            MySQLSuperManager dbm = GetLockedConnection();
+            try
+            {
+                return dbm.Manager.UserExists(userID);
+            }
+            catch (MySql.Data.MySqlClient.MySqlException e)
+            {
+                e.ToString();
+                dbm.Manager.Reconnect();
+                return dbm.Manager.UserExists(userID);
+            }
+            catch (Exception e)
+            {
+                m_log.Error(e);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+
+
+        public bool UpdateUserInfo_old(string userID, UserInfo updatedInfo)
+        {
+            throw new NotImplementedException();
+        }
+        public bool UpdateUserInfo(string userID, UserInfo updatedInfo)
+        {
+            MySQLSuperManager dbm = GetLockedConnection();
+            try
+            {
+                return dbm.Manager.UpdateUserInfo(userID, updatedInfo);
+            }
+            catch (MySql.Data.MySqlClient.MySqlException e)
+            {
+                e.ToString();
+                dbm.Manager.Reconnect();
+                return dbm.Manager.UpdateUserInfo(userID, updatedInfo);
+            }
+            catch (Exception e)
+            {
+                m_log.Error(e);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+
+        public bool DeleteUser_old(string userID)
+        {
+            throw new NotImplementedException();
+        }
+        public bool DeleteUser(string userID)
+        {
+            MySQLSuperManager dbm = GetLockedConnection();
+            try
+            {
+                return dbm.Manager.DeleteUser(userID);
+            }
+            catch (MySql.Data.MySqlClient.MySqlException e)
+            {
+                e.ToString();
+                dbm.Manager.Reconnect();
+                return dbm.Manager.DeleteUser(userID);
+            }
+            catch (Exception e)
+            {
+                m_log.Error(e);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+
+        public void LogTransactionError_old(UUID transactionID, string errorMessage)
+        {
+            throw new NotImplementedException();
+        }
+        public void LogTransactionError(UUID transactionID, string errorMessage)
+        {
+            m_log.ErrorFormat("[MONEY DB]: Transaction {0} failed with error: {1}", transactionID, errorMessage);
+        }
+
+        public IEnumerable<TransactionData> GetTransactionHistory_old(string userID, int startTime, int endTime)
+        {
+            throw new NotImplementedException();
+        }
+        public IEnumerable<TransactionData> GetTransactionHistory(string userID, int startTime, int endTime)
+        {
+            MySQLSuperManager dbm = GetLockedConnection();
+            try
+            {
+                return dbm.Manager.GetTransactionHistory(userID, startTime, endTime);
+            }
+            catch (MySql.Data.MySqlClient.MySqlException e)
+            {
+                e.ToString();
+                dbm.Manager.Reconnect();
+                return dbm.Manager.GetTransactionHistory(userID, startTime, endTime);
+            }
+            catch (Exception e)
+            {
+                m_log.Error(e);
+                return new List<TransactionData>(); // Return an empty list instead of throwing an exception
             }
             finally
             {

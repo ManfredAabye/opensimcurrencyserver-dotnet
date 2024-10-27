@@ -39,6 +39,7 @@ using NSL.Certificate.Tools;
 using NSL.Network.XmlRpc;
 using System.IO;
 
+
 [assembly: Addin("DTLNSLMoneyModule", "1.0")]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
 
@@ -185,7 +186,6 @@ namespace OpenSim.Modules.Currency
             AddRegion(scene);
         }
 
-
         /// <summary>
         /// This is called to initialize the region module. For shared modules, this is called
         /// exactly once, after creating the single (shared) instance. For non-shared modules,
@@ -194,71 +194,82 @@ namespace OpenSim.Modules.Currency
         /// <param name="source">A <see cref="T:Nini.Config.IConfigSource" /></param>
         public void Initialise(IConfigSource source)
         {
-            m_log.InfoFormat("[MONEY MODULE]: Initialise:");
+            m_log.InfoFormat("[MONEY MODULE]: Initialise started.");
 
-            // Handle the parameters errors.
-            if (source == null) return;
+            // Überprüfen, ob die Konfigurationsquelle null ist.
+            if (source == null)
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: Initialise aborted - source is null.");
+                return;
+            }
 
             try
             {
                 m_config = source;
 
-                // [Economy] section
+                // Economy-Konfiguration abrufen
                 IConfig economyConfig = m_config.Configs["Economy"];
+                if (economyConfig == null)
+                {
+                    m_log.ErrorFormat("[MONEY MODULE]: Initialise aborted - [Economy] section is missing in configuration.");
+                    return;
+                }
 
+                // Überprüfen, ob das Modul aktiviert ist
                 if (economyConfig.GetString("EconomyModule") != Name)
                 {
-                    //m_enabled = false;
-                    m_log.InfoFormat("[MONEY MODULE]: Initialise: The DTL/NSL MoneyModule is disabled");
+                    m_log.InfoFormat("[MONEY MODULE]: Initialise - DTL/NSL MoneyModule is disabled.");
                     return;
+                }
+
+                m_log.InfoFormat("[MONEY MODULE]: Initialise - DTL/NSL MoneyModule is enabled.");
+
+                // Konfiguration für Verkauf und MoneyServer-URL
+                m_sellEnabled = economyConfig.GetBoolean("SellEnabled", m_sellEnabled);
+                m_log.InfoFormat("[MONEY MODULE]: SellEnabled set to {0}", m_sellEnabled);
+
+                m_moneyServURL = economyConfig.GetString("CurrencyServer", m_moneyServURL);
+                m_log.InfoFormat("[MONEY MODULE]: CurrencyServer set to {0}", m_moneyServURL);
+
+                // Konfiguration für Client-Zertifizierung
+                m_certFilename = economyConfig.GetString("ClientCertFilename", m_certFilename);
+                m_certPassword = economyConfig.GetString("ClientCertPassword", m_certPassword);
+                if (!string.IsNullOrEmpty(m_certFilename))
+                {
+                    m_certVerify.SetPrivateCert(m_certFilename, m_certPassword);
+                    m_log.InfoFormat("[MONEY MODULE]: Client certificate set from file {0}", m_certFilename);
                 }
                 else
                 {
-                    m_log.InfoFormat("[MONEY MODULE]: Initialise: The DTL/NSL MoneyModule is enabled");
+                    m_log.Warn("[MONEY MODULE]: No client certificate filename provided.");
                 }
 
-                m_sellEnabled = economyConfig.GetBoolean("SellEnabled", m_sellEnabled);
-                m_moneyServURL = economyConfig.GetString("CurrencyServer", m_moneyServURL);
-
-                // Client Certification
-                m_certFilename = economyConfig.GetString("ClientCertFilename", m_certFilename);
-                m_certPassword = economyConfig.GetString("ClientCertPassword", m_certPassword);
-                if (m_certFilename != "")
-                {
-                    m_certVerify.SetPrivateCert(m_certFilename, m_certPassword);
-                    m_log.Info("[MONEY MODULE]: Initialise: Issue Authentication of Client. Cert File is " + m_certFilename);
-                }
-
-                // Server Authentication  MoneyServer server certificate check
+                // Konfiguration für Server-Zertifikatüberprüfung
                 m_checkServerCert = economyConfig.GetBoolean("CheckServerCert", m_checkServerCert);
                 m_cacertFilename = economyConfig.GetString("CACertFilename", m_cacertFilename);
 
-                if (m_cacertFilename != "")
+                if (!string.IsNullOrEmpty(m_cacertFilename))
                 {
                     m_certVerify.SetPrivateCA(m_cacertFilename);
-                    m_log.Info("[MONEY MODULE]: Initialise: Issue Authentication of Server. CA Cert File is " + m_cacertFilename);
+                    m_log.InfoFormat("[MONEY MODULE]: Server CA certificate loaded from {0}", m_cacertFilename);
                 }
                 else
                 {
                     m_checkServerCert = false;
-                    m_log.Info("[MONEY MODULE]: Initialise: No check Money Server or CACertFilename is empty. CheckServerCert is false.");
+                    m_log.Warn("[MONEY MODULE]: No CA certificate filename provided; server certificate check disabled.");
                 }
 
-                if (m_checkServerCert)
-                {
-                    m_log.Info("[MONEY MODULE]: Initialise: Execute Authentication of Server. CA Cert File is " + m_cacertFilename);
-                }
-                else
-                {
-                    m_log.Info("[MONEY MODULE]: Initialise: No check Money Server or CACertFilename is empty. CheckServerCert is false.");
-                }
-
-                // Settlement
+                // Konfiguration für Settlement
                 m_use_web_settle = economyConfig.GetBoolean("SettlementByWeb", m_use_web_settle);
-                m_settle_url = economyConfig.GetString("SettlementURL", m_settle_url);
-                m_settle_message = economyConfig.GetString("SettlementMessage", m_settle_message);
+                m_log.InfoFormat("[MONEY MODULE]: SettlementByWeb set to {0}", m_use_web_settle);
 
-                // Price
+                m_settle_url = economyConfig.GetString("SettlementURL", m_settle_url);
+                m_log.InfoFormat("[MONEY MODULE]: SettlementURL set to {0}", m_settle_url);
+
+                m_settle_message = economyConfig.GetString("SettlementMessage", m_settle_message);
+                m_log.InfoFormat("[MONEY MODULE]: SettlementMessage set to {0}", m_settle_message);
+
+                // Preise konfigurieren
                 PriceEnergyUnit = economyConfig.GetInt("PriceEnergyUnit", PriceEnergyUnit);
                 PriceObjectClaim = economyConfig.GetInt("PriceObjectClaim", PriceObjectClaim);
                 PricePublicObjectDecay = economyConfig.GetInt("PricePublicObjectDecay", PricePublicObjectDecay);
@@ -274,60 +285,32 @@ namespace OpenSim.Modules.Currency
                 TeleportMinPrice = economyConfig.GetInt("TeleportMinPrice", TeleportMinPrice);
                 TeleportPriceExponent = economyConfig.GetFloat("TeleportPriceExponent", TeleportPriceExponent);
                 EnergyEfficiency = economyConfig.GetFloat("EnergyEfficiency", EnergyEfficiency);
+                m_log.InfoFormat("[MONEY MODULE]: Price settings loaded successfully.");
 
-                // for HG Avatar
-                string avatar_class = economyConfig.GetString("HGAvatarAs", "HGAvatar").ToLower();
-                if (avatar_class == "localavatar") m_hg_avatarClass = (int)AvatarType.LOCAL_AVATAR;
-                else if (avatar_class == "guestavatar") m_hg_avatarClass = (int)AvatarType.GUEST_AVATAR;
-                else if (avatar_class == "hgavatar") m_hg_avatarClass = (int)AvatarType.HG_AVATAR;
-                else if (avatar_class == "foreignavatar") m_hg_avatarClass = (int)AvatarType.FOREIGN_AVATAR;
-                else m_hg_avatarClass = (int)AvatarType.UNKNOWN_AVATAR;
+                // Konfiguration für HG-Avatar-Typ
+                string avatarClass = economyConfig.GetString("HGAvatarAs", "HGAvatar").ToLower();
+                m_hg_avatarClass = avatarClass switch
+                {
+                    "localavatar" => (int)AvatarType.LOCAL_AVATAR,
+                    "guestavatar" => (int)AvatarType.GUEST_AVATAR,
+                    "hgavatar" => (int)AvatarType.HG_AVATAR,
+                    "foreignavatar" => (int)AvatarType.FOREIGN_AVATAR,
+                    _ => (int)AvatarType.UNKNOWN_AVATAR
+                };
 
+                m_log.InfoFormat("[MONEY MODULE]: Initialise - Configuration loaded successfully.");
             }
-            catch
+            catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY MODULE]: Initialise: Faile to read configuration file");
+                m_log.ErrorFormat("[MONEY MODULE]: Initialise - Failed to load configuration. Error: {0}", ex);
             }
         }
 
 
-        // Test 2023
-
-        // Test 2023
-
+        // Test
         /// <summary>The m RPC handlers</summary>
         private Dictionary<string, XmlRpcMethod> m_rpcHandlers;
 
-        /// <summary>Processes the PHP.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="response">The response.</param>
-        //public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
-        //{
-        //MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
-        //    m_log.Info("[MONEY MODULE]: processPHP: processPHP");
-        //}
-        /*
-        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
-        {
-            m_log.InfoFormat("[MONEY MODULE]: Received request at {0}", request.RawUrl);
-
-            try
-            {
-                MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
-                m_log.Info("[MONEY MODULE]: Successfully processed request.");
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY MODULE]: Error processing request: {0}", ex.Message);
-                response.StatusCode = 500; // Interner Serverfehler
-                response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
-            }
-        }*/
-
-        /*
-         * Um XML-RPC-Debugging einzubauen, die die Anfragen in eine Datei namens xmlrpc_debug.log speichert, kannst du den Code der processPHP-Methode wie folgt anpassen. 
-         * Hierbei wird der empfangene XML-RPC-Request in die Logdatei geschrieben, bevor die Verarbeitung erfolgt.
-         */
 
         public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
         {
@@ -335,11 +318,11 @@ namespace OpenSim.Modules.Currency
 
             // Logge den XML-RPC-Request in eine Datei
             LogXmlRpcRequest(request);
-
+                      
             try
             {
                 MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
-                m_log.Info("[MONEY MODULE]: Successfully processed request.");
+                m_log.InfoFormat("[MONEY MODULE]: Successfully processed request.");
             }
             catch (Exception ex)
             {
@@ -389,50 +372,50 @@ namespace OpenSim.Modules.Currency
         /// <param name="remoteClient">The remote client.</param>
         public XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
-            // UUID agentId = UUID.Zero;
             int amount = 0;
+            Hashtable currencyResponse = new Hashtable();
             try
             {
-                Hashtable requestData = (Hashtable)request.Params[0];
-                if (requestData.ContainsKey("currencyBuy"))
+                // Prüfe, ob Params vorhanden und vom Typ Hashtable sind
+                if (request.Params.Count == 0 || !(request.Params[0] is Hashtable requestData))
                 {
-                    amount = Convert.ToInt32(requestData["currencyBuy"]);
+                    throw new ArgumentException("Invalid request format");
+                }
+
+                // Überprüfe das Vorhandensein und den Typ von "currencyBuy"
+                if (requestData.ContainsKey("currencyBuy") && int.TryParse(requestData["currencyBuy"].ToString(), out amount))
+                {
                     m_log.InfoFormat("[MONEY MODULE]: quote_func currencyBuy: {0}", amount);
                 }
                 else
                 {
-                    m_log.Warn("[MONEY MODULE]: quote_func: currencyBuy parameter is missing");
+                    m_log.Warn("[MONEY MODULE]: quote_func: currencyBuy parameter is missing or invalid.");
+                    currencyResponse.Add("success", false);
+                    currencyResponse.Add("errorMessage", "Invalid or missing currencyBuy parameter.");
+                    return new XmlRpcResponse { Value = currencyResponse };
                 }
+
+                int estimatedCost = CalculateCost(amount);
+                currencyResponse.Add("estimatedCost", estimatedCost);
+                currencyResponse.Add("currencyBuy", amount);
+                m_log.InfoFormat("[MONEY MODULE]: Estimated cost for {0} currency is {1}", amount, estimatedCost);
+
+                Hashtable quoteResponse = new Hashtable
+        {
+            { "success", true },
+            { "currency", currencyResponse },
+            { "confirm", "asdfad9fj39ma9fj" }
+        };
+
+                return new XmlRpcResponse { Value = quoteResponse };
             }
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY MODULE]: Error parsing currencyBuy: {0}", ex.Message);
+                m_log.ErrorFormat("[MONEY MODULE]: Error in quote_func: {0}", ex.Message);
+                currencyResponse.Add("success", false);
+                currencyResponse.Add("errorMessage", "Error processing request.");
+                return new XmlRpcResponse { Value = currencyResponse };
             }
-
-
-            Hashtable currencyResponse = new Hashtable();
-
-            int estimatedCost = CalculateCost(amount);
-            currencyResponse.Add("estimatedCost", estimatedCost);
-            m_log.InfoFormat("[MONEY MODULE]: Estimated cost for {0} currency is {1}", amount, estimatedCost);
-
-            currencyResponse.Add("currencyBuy", amount);
-            m_log.InfoFormat("[MONEY MODULE] quote_func currencyBuy: {0}", amount);
-
-            Hashtable quoteResponse = new Hashtable();
-            quoteResponse.Add("success", true);
-            quoteResponse.Add("currency", currencyResponse);
-            quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
-
-            m_log.InfoFormat("[MONEY MODULE]: quote_func: {0}", quoteResponse.ToString());
-
-            //quoteResponse.Add("success", false);
-            //quoteResponse.Add("errorMessage", "There is currency");
-            //quoteResponse.Add("errorURI", "http://opensimulator.org");
-            XmlRpcResponse returnval = new XmlRpcResponse();
-            returnval.Value = quoteResponse;          
-
-            return returnval;
         }
 
         /// <summary>Preflights the buy land prep function.</summary>
@@ -551,15 +534,9 @@ namespace OpenSim.Modules.Currency
                         m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func); // add php 2023
                         m_rpcHandlers.Add("buyLandPrep", landBuy_func); // add php 2023
 
-                        MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP)); // add php 2023
-                        MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP)); // add php 2023
-                        m_log.Info("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers.");
-
-                        // OS Version < 0.9.2 ???
-                        // HttpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func); // add php 2023
-                        // HttpServer.AddXmlRPCHandler("buyCurrency", buy_func);
-                        // HttpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func); // add php 2023
-                        // HttpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func); // add php 2023
+                        MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
+                        MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
+                        m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers.");
 
                         MainServer.Instance.AddXmlRPCHandler("OnMoneyTransfered", OnMoneyTransferedHandler);
                         MainServer.Instance.AddXmlRPCHandler("UpdateBalance", BalanceUpdateHandler);
