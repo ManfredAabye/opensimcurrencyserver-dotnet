@@ -10,6 +10,8 @@
 
 OpenSim Currency Server for OpenSim 0.9.3.x Dev (X64/Unix/DotNet6) & (X64/Unix/DotNet8)
 
+Everything works except the landtool.php currency.php test.
+
 Ubuntu 18 = DOTNET 6.0 - Ubuntu 20+ DOTNET 8.0
 
 opensim.currency - modified
@@ -19,7 +21,7 @@ From Original DTL/NSL Money Server for X64/Unix/DotNet and Windows 10/11 64bit w
 by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8.
 
 ## TODO: 
-test
+test landtool.php currency.php
 
 helpers Robust.ini:
 
