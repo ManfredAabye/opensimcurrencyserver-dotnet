@@ -26,7 +26,9 @@ test landtool.php currency.php
 helpers Robust.ini:
 
      economy = ${Const|BaseURL}:8008/
-     
+
+Further communication information is available in the xmlrpc_requests.log
+
 ## Errors
 ```
 2024-10-27 17:22:19 - URL: /landtool.php - Payload: <?xml version="1.0"?><methodCall><methodName>preflightBuyLandPrep</methodName><params><param><value><struct><member><name>agentId</name><value><string>134e495d-0b1e-48b5-b10b-b009a600cdca</string></value></member><member><name>billableArea</name><value><int>0</int></value></member><member><name>currencyBuy</name><value><int>0</int></value></member><member><name>language</name><value><string>de</string></value></member><member><name>secureSessionId</name><value><string>ae09697b-58c4-437c-b83c-76ea7bdcd77f</string></value></member></struct></value></param></params></methodCall>
