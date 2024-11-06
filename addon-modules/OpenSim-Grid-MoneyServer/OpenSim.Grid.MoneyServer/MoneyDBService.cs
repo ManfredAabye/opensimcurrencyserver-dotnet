@@ -701,10 +701,6 @@ namespace OpenSim.Grid.MoneyServer
 
         // Test 2024
 
-        public bool UserExists_old(string userID)
-        {
-            throw new NotImplementedException();
-        }
         public bool UserExists(string userID)
         {
             MySQLSuperManager dbm = GetLockedConnection();
@@ -729,11 +725,6 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-
-        public bool UpdateUserInfo_old(string userID, UserInfo updatedInfo)
-        {
-            throw new NotImplementedException();
-        }
         public bool UpdateUserInfo(string userID, UserInfo updatedInfo)
         {
             MySQLSuperManager dbm = GetLockedConnection();
@@ -758,10 +749,6 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        public bool DeleteUser_old(string userID)
-        {
-            throw new NotImplementedException();
-        }
         public bool DeleteUser(string userID)
         {
             MySQLSuperManager dbm = GetLockedConnection();
@@ -786,19 +773,11 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        public void LogTransactionError_old(UUID transactionID, string errorMessage)
-        {
-            throw new NotImplementedException();
-        }
         public void LogTransactionError(UUID transactionID, string errorMessage)
         {
             m_log.ErrorFormat("[MONEY DB]: Transaction {0} failed with error: {1}", transactionID, errorMessage);
         }
 
-        public IEnumerable<TransactionData> GetTransactionHistory_old(string userID, int startTime, int endTime)
-        {
-            throw new NotImplementedException();
-        }
         public IEnumerable<TransactionData> GetTransactionHistory(string userID, int startTime, int endTime)
         {
             MySQLSuperManager dbm = GetLockedConnection();

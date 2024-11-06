@@ -17,6 +17,8 @@
 
 using log4net.Config;
 
+using System;
+
 namespace OpenSim.Grid.MoneyServer
 {
     class Program
@@ -25,10 +27,25 @@ namespace OpenSim.Grid.MoneyServer
         /// <param name="args">The arguments.</param>
         public static void Main(string[] args)
         {
-            XmlConfigurator.Configure();
-            MoneyServerBase app = new MoneyServerBase();
-            app.Startup();
-            app.Work();
+            try
+            {
+                XmlConfigurator.Configure();
+                MoneyServerBase app = new MoneyServerBase();
+                if (app != null)
+                {
+                    app.Startup();
+                    app.Work();
+                }
+                else
+                {
+                    Console.WriteLine("Failed to create MoneyServerBase instance.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("An error occurred: " + ex.Message);
+                // You can also log the exception here, e.g., using a logging framework
+            }
         }
     }
 }

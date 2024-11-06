@@ -64,14 +64,8 @@ namespace OpenSim.Grid.MoneyServer
 
         private string m_sslCommonName = "";
 
-        /// <summary>
-        /// For server authentication
-        /// </summary>
         private NSLCertificateVerify m_certVerify = new NSLCertificateVerify();
 
-        /// <summary>
-        ///  Update Balance Messages
-        /// </summary>
         private string m_BalanceMessageLandSale = "Paid the Money L${0} for Land.";
         private string m_BalanceMessageRcvLandSale = "";
         private string m_BalanceMessageSendGift = "Sent Gift L${0} to {1}.";
@@ -246,11 +240,10 @@ namespace OpenSim.Grid.MoneyServer
             m_httpServer.AddXmlRPCHandler("UserAlert", UserAlertHandler);
         }
 
-        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+        public void processPHP_old(IOSHttpRequest request, IOSHttpResponse response)
         {
             m_log.InfoFormat("[MONEY MODULE]: Received request at {0}", request.RawUrl);
 
-            // Logge den XML-RPC-Request in eine Datei
             LogXmlRpcRequest(request);
 
             if (m_moneyDBService == null)
@@ -272,8 +265,46 @@ namespace OpenSim.Grid.MoneyServer
                 response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
         }
+        /// <summary>
+        /// Processes a PHP request by handling XML-RPC requests and logging the request.
+        /// </summary>
+        /// <param name="request">The incoming request.</param>
+        /// <param name="response">The outgoing response.</param>
+        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+        {
+            // Log the request URL
+            m_log.InfoFormat("[MONEY MODULE]: Received request at {0}", request.RawUrl);
 
-        public XmlRpcResponse OnMoneyTransferedHandler(XmlRpcRequest request, IPEndPoint client)
+            // Log the XML-RPC request
+            LogXmlRpcRequest(request);
+
+            // Check if the database service is initialized
+            if (m_moneyDBService == null)
+            {
+                // Log an error and set the response status code to 500
+                m_log.Error("[MONEY MODULE]: Database service not initialized.");
+                response.StatusCode = 500;
+                return;
+            }
+
+            try
+            {
+                // Handle the XML-RPC request
+                MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+
+                // Log a success message
+                m_log.InfoFormat("[MONEY MODULE]: Successfully processed request.");
+            }
+            catch (Exception ex)
+            {
+                // Log an error and set the response status code to 500
+                m_log.ErrorFormat("[MONEY MODULE]: Error processing request: {0}", ex.Message);
+                response.StatusCode = 500; // Internal Server Error
+                response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
+            }
+        }
+
+            public XmlRpcResponse OnMoneyTransferedHandler(XmlRpcRequest request, IPEndPoint client)
         {
             // Implementiere hier die Logik für den Handler
             return new XmlRpcResponse(); // add a return statement
@@ -327,51 +358,53 @@ namespace OpenSim.Grid.MoneyServer
             m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers.");
         }
 
-        /// <summary>Buys the function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="client">The client.</param>
-        /// <exception cref="System.NotImplementedException"></exception>
-        private XmlRpcResponse buy_func_old(XmlRpcRequest request, IPEndPoint client)
-        {
-            m_log.InfoFormat("[MONEY XMLRPC]: handleClient buyCurrency.");
-            throw new NotImplementedException();
-        }
-        /// <summary>Buys the function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="client">The client.</param>
+        /// <summary>Handles the buy function.</summary>
+        /// <param name="request">The XML-RPC request.</param>
+        /// <param name="client">The client endpoint.</param>
+        /// <returns>An XML-RPC response indicating success.</returns>
         private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint client)
         {
+            // Log the XML-RPC request
             m_log.InfoFormat("[MONEY XMLRPC]: handleClient buyCurrency.");
+
+            // Create the XML-RPC response
             XmlRpcResponse returnval = new XmlRpcResponse();
             Hashtable returnresp = new Hashtable();
             returnresp.Add("success", true);
             returnval.Value = returnresp;
+
+            // Return the XML-RPC response
             return returnval;
         }
 
-        /// <summary>Quotes the function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="client">The client.</param>
-        /// <exception cref="System.NotImplementedException"></exception>
-        private XmlRpcResponse quote_func_old(XmlRpcRequest request, IPEndPoint client)
-        {
-            m_log.InfoFormat("[MONEY XMLRPC]: handleClient getCurrencyQuote.");
-            throw new NotImplementedException();
-        }
-        /// <summary>Quotes the function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="client">The client.</param>
+        /// <summary> Handles the get currency quote request.</summary>
+        /// <param name="request">The incoming XML-RPC request.</param>
+        /// <param name="client">The client that made the request.</param>
+        /// <returns>An XML-RPC response with the currency quote.</returns>
         private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint client)
         {
+            // Log the request for auditing purposes
             m_log.InfoFormat("[MONEY XMLRPC]: handleClient getCurrencyQuote.");
 
+            // Create a response object to store the quote details
             Hashtable quoteResponse = new Hashtable();
-            quoteResponse.Add("success", true);
-            quoteResponse.Add("currency", new Hashtable()); // Add currency details here
-            quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
 
+            // Set the success flag to true
+            quoteResponse.Add("success", true);
+
+            // Add a placeholder for currency details (to be implemented)
+            quoteResponse.Add("currency", new Hashtable()); // TODO: Add currency details here
+
+            // Add a confirmation code (to be implemented)
+            quoteResponse.Add("confirm", "asdfad9fj39ma9fj"); // TODO: Generate a unique confirmation code
+
+            // Create an XML-RPC response object
             XmlRpcResponse returnval = new XmlRpcResponse();
+
+            // Set the response value to the quote response object
             returnval.Value = quoteResponse;
+
+            // Return the response to the client
             return returnval;
         }
 
@@ -387,7 +420,7 @@ namespace OpenSim.Grid.MoneyServer
         /// <summary>Lands the buy function.</summary>
         /// <param name="request">The request.</param>
         /// <param name="client">The client.</param>
-        private XmlRpcResponse landBuy_func(XmlRpcRequest request, IPEndPoint client)
+        private XmlRpcResponse landBuy_func_old2(XmlRpcRequest request, IPEndPoint client)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: handleClient buyLandPrep.");
             XmlRpcResponse returnval = new XmlRpcResponse();
@@ -396,20 +429,43 @@ namespace OpenSim.Grid.MoneyServer
             returnval.Value = returnresp;
             return returnval;
         }
+        /// <summary>Lands the buy function.</summary>
+        /// <param name="request">The request.</param>
+        /// <param name="client">The client.</param>
+        private XmlRpcResponse landBuy_func(XmlRpcRequest request, IPEndPoint client)
+        {
+            if (request == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: landBuy_func: request is null.");
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+
+            if (client == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: landBuy_func: client is null.");
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+
+            try
+            {
+                m_log.InfoFormat("[MONEY XMLRPC]: handleClient buyLandPrep.");
+                XmlRpcResponse returnval = new XmlRpcResponse();
+                Hashtable returnresp = new Hashtable();
+                returnresp.Add("success", true);
+                returnval.Value = returnresp;
+                return returnval;
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: landBuy_func: {0}", ex.Message);
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+        }
 
         /// <summary>Preflights the buy land prep function.</summary>
         /// <param name="request">The request.</param>
         /// <param name="client">The client.</param>
-        /// <exception cref="System.NotImplementedException"></exception>
         private XmlRpcResponse preflightBuyLandPrep_func_old(XmlRpcRequest request, IPEndPoint client)
-        {
-            m_log.InfoFormat("[MONEY XMLRPC]: handleClient preflightBuyLandPrep.");
-            throw new NotImplementedException();
-        }
-        /// <summary>Preflights the buy land prep function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="client">The client.</param>
-        private XmlRpcResponse preflightBuyLandPrep_func(XmlRpcRequest request, IPEndPoint client)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: handleClient preflightBuyLandPrep.");
 
@@ -418,6 +474,38 @@ namespace OpenSim.Grid.MoneyServer
             returnresp.Add("success", true);
             returnval.Value = returnresp;
             return returnval;
+        }
+        /// <summary>Preflights the buy land prep function.</summary>
+        /// <param name="request">The request.</param>
+        /// <param name="client">The client.</param>
+        private XmlRpcResponse preflightBuyLandPrep_func(XmlRpcRequest request, IPEndPoint client)
+        {
+            if (request == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep_func: request is null.");
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+
+            if (client == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep_func: client is null.");
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+
+            try
+            {
+                m_log.InfoFormat("[MONEY XMLRPC]: handleClient preflightBuyLandPrep.");
+                XmlRpcResponse returnval = new XmlRpcResponse();
+                Hashtable returnresp = new Hashtable();
+                returnresp.Add("success", true);
+                returnval.Value = returnresp;
+                return returnval;
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: preflightBuyLandPrep_func: {0}", ex.Message);
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
         }
 
         /// <summary>Gets the name of the SSL common.</summary>

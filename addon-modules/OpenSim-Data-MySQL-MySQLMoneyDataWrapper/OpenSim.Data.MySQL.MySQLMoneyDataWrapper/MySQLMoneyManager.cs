@@ -23,6 +23,7 @@ using System.Text.RegularExpressions;
 using log4net;
 using MySql.Data.MySqlClient;
 using OpenMetaverse;
+using System.Linq;
 
 namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
 {
@@ -50,11 +51,16 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
         /// <param name="port">The port.</param>
         public MySQLMoneyManager(string hostname, string database, string username, string password, string cpooling, string port)
         {
-            string s = "Server=" + hostname + ";Port=" + port + ";Database=" + database +
-                                              ";User ID=" + username + ";Password=" + password + ";Pooling=" + cpooling + ";";
-            Initialise(s);
-        }
+            var requiredParameters = new[] { hostname, database, username, password, cpooling, port };
 
+            if (requiredParameters.Any(p => string.IsNullOrEmpty(p)))
+            {
+                throw new ArgumentException("All connection parameters must be provided.");
+            }
+
+            string connectionString = $"Server={hostname};Port={port};Database={database};User ID={username};Password={password};Pooling={cpooling};";
+            Initialise(connectionString);
+        }
 
         /// <summary>Initializes a new instance of the <see cref="MySQLMoneyManager" /> class.</summary>
         /// <param name="connect">The connect.</param>

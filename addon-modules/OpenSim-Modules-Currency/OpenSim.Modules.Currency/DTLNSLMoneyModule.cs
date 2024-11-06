@@ -114,12 +114,11 @@ namespace OpenSim.Modules.Currency
 
         private string m_moneyServURL = string.Empty;
         public BaseHttpServer HttpServer;
-
+                
         private string m_certFilename = "";
         private string m_certPassword = "";
         private bool m_checkServerCert = false;
         private string m_cacertFilename = "";
-        //private X509Certificate2 m_cert  = null;
 
         private bool m_use_web_settle = false;
         private string m_settle_url = "";
@@ -129,16 +128,9 @@ namespace OpenSim.Modules.Currency
         private int m_hg_avatarClass = (int)AvatarType.HG_AVATAR;
 
         private NSLCertificateVerify m_certVerify = new NSLCertificateVerify(); // For server authentication
-
-
-        /// <summary>   
-        /// Scene dictionary indexed by Region Handle   
-        /// </summary>   
+ 
         private Dictionary<ulong, Scene> m_sceneList = new Dictionary<ulong, Scene>();
-
-        /// <summary>   
-        /// To cache the balance data while the money server is not available.   
-        /// </summary>   
+ 
         private Dictionary<UUID, int> m_moneyServer = new Dictionary<UUID, int>();
 
         // Events  
@@ -180,7 +172,12 @@ namespace OpenSim.Modules.Currency
             Initialise(source);
 
             // Check if the money server URL is null or empty
-            if (string.IsNullOrEmpty(m_moneyServURL)) m_enable_server = false;
+            //if (string.IsNullOrEmpty(m_moneyServURL)) m_enable_server = false;
+            if (string.IsNullOrEmpty(m_moneyServURL))
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: CurrencyServer URL not set.");
+                m_enable_server = false;
+            }
 
             // Add the scene to the region
             AddRegion(scene);
@@ -324,15 +321,21 @@ namespace OpenSim.Modules.Currency
                 MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
                 m_log.InfoFormat("[MONEY MODULE]: Successfully processed request.");
             }
+            //catch (Exception ex)
+            //{
+            //    m_log.ErrorFormat("[MONEY MODULE]: Error processing request: {0}", ex.Message);
+            //    response.StatusCode = 500; // Interner Serverfehler
+            //    response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
+            //}
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY MODULE]: Error processing request: {0}", ex.Message);
-                response.StatusCode = 500; // Interner Serverfehler
+                m_log.ErrorFormat("[MONEY MODULE]: Error processing request. URL: {0}, Error: {1}", request.RawUrl, ex.ToString());
+                response.StatusCode = 500;
                 response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
         }
 
-        private void LogXmlRpcRequest(IOSHttpRequest request)
+        private void LogXmlRpcRequestFile(IOSHttpRequest request)
         {
             try
             {
@@ -351,6 +354,28 @@ namespace OpenSim.Modules.Currency
 
                 // Schreibe den Logeintrag in die Datei
                 File.AppendAllText(logFilePath, logEntry);
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: Error logging XML-RPC request: {0}", ex.Message);
+            }
+        }
+        private void LogXmlRpcRequest(IOSHttpRequest request)
+        {
+            try
+            {
+                // Lies den Request-Body
+                string requestBody;
+                using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
+                {
+                    requestBody = reader.ReadToEnd();
+                }
+
+                // Bereite den Logeintrag vor
+                string logEntry = $"{DateTime.UtcNow}: {request.RawUrl}\n{requestBody}\n\n";
+
+                // Schreibe den Logeintrag in das Log
+                m_log.Info(logEntry);
             }
             catch (Exception ex)
             {
@@ -418,6 +443,24 @@ namespace OpenSim.Modules.Currency
             }
         }
 
+
+        /// <summary>Buys the function.</summary>
+        /// <param name="request">The request.</param>
+        /// <param name="remoteClient">The remote client.</param>
+        public XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        {
+            // Hashtable requestData = (Hashtable) request.Params[0];
+            // UUID agentId = UUID.Zero;
+            // int amount = 0;
+
+            XmlRpcResponse returnval = new XmlRpcResponse();
+            Hashtable returnresp = new Hashtable();
+            returnresp.Add("success", true);
+            returnval.Value = returnresp;
+            m_log.InfoFormat("[MONEY MODULE]: money buy", returnval.ToString());
+            return returnval;
+        }
+
         /// <summary>Preflights the buy land prep function.</summary>
         /// <param name="request">The request.</param>
         /// <param name="remoteClient">The remote client.</param>
@@ -478,22 +521,6 @@ namespace OpenSim.Modules.Currency
             return ret;
         }
 
-        /// <summary>Buys the function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="remoteClient">The remote client.</param>
-        public XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
-        {
-            // Hashtable requestData = (Hashtable) request.Params[0];
-            // UUID agentId = UUID.Zero;
-            // int amount = 0;
-
-            XmlRpcResponse returnval = new XmlRpcResponse();
-            Hashtable returnresp = new Hashtable();
-            returnresp.Add("success", true);
-            returnval.Value = returnresp;
-            m_log.InfoFormat("[MONEY MODULE]: money buy", returnval.ToString());
-            return returnval;
-        }
         // Test End 2023
 
 
@@ -522,17 +549,18 @@ namespace OpenSim.Modules.Currency
                         HttpServer.AddXmlRPCHandler("OnMoneyTransfered", OnMoneyTransferedHandler);
                         HttpServer.AddXmlRPCHandler("UpdateBalance", BalanceUpdateHandler);
                         HttpServer.AddXmlRPCHandler("UserAlert", UserAlertHandler);
-                        HttpServer.AddXmlRPCHandler("GetBalance", GetBalanceHandler);                       // added
-                        HttpServer.AddXmlRPCHandler("AddBankerMoney", AddBankerMoneyHandler);               // added
-                        HttpServer.AddXmlRPCHandler("SendMoney", SendMoneyHandler);                         // added
-                        HttpServer.AddXmlRPCHandler("MoveMoney", MoveMoneyHandler);                         // added
+                        HttpServer.AddXmlRPCHandler("GetBalance", GetBalanceHandler);                       
+                        HttpServer.AddXmlRPCHandler("AddBankerMoney", AddBankerMoneyHandler);               
+                        HttpServer.AddXmlRPCHandler("SendMoney", SendMoneyHandler);                         
+                        HttpServer.AddXmlRPCHandler("MoveMoney", MoveMoneyHandler);
 
-                        // OS Version > 0.9.2 ???
-                        m_rpcHandlers = new Dictionary<string, XmlRpcMethod>(); // add php 2023
-                        m_rpcHandlers.Add("getCurrencyQuote", quote_func); // add php 2023
-                        m_rpcHandlers.Add("buyCurrency", buy_func); // add php 2023
-                        m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func); // add php 2023
-                        m_rpcHandlers.Add("buyLandPrep", landBuy_func); // add php 2023
+                        // Stellen Sie sicher, dass m_rpcHandlers korrekt initialisiert ist und dass MainServer.Instance nicht null ist.
+                        // Falls m_rpcHandlers nicht in Initialise() gesetzt wurde, fügen Sie eine Initialisierung hinzu:
+                        m_rpcHandlers = new Dictionary<string, XmlRpcMethod>(); 
+                        m_rpcHandlers.Add("getCurrencyQuote", quote_func); 
+                        m_rpcHandlers.Add("buyCurrency", buy_func); 
+                        m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func); 
+                        m_rpcHandlers.Add("buyLandPrep", landBuy_func); 
 
                         MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
                         MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
@@ -541,14 +569,14 @@ namespace OpenSim.Modules.Currency
                         MainServer.Instance.AddXmlRPCHandler("OnMoneyTransfered", OnMoneyTransferedHandler);
                         MainServer.Instance.AddXmlRPCHandler("UpdateBalance", BalanceUpdateHandler);
                         MainServer.Instance.AddXmlRPCHandler("UserAlert", UserAlertHandler);
-                        MainServer.Instance.AddXmlRPCHandler("GetBalance", GetBalanceHandler);              // added
-                        MainServer.Instance.AddXmlRPCHandler("AddBankerMoney", AddBankerMoneyHandler);      // added
-                        MainServer.Instance.AddXmlRPCHandler("SendMoney", SendMoneyHandler);                // added
-                        MainServer.Instance.AddXmlRPCHandler("MoveMoney", MoveMoneyHandler);                // added
+                        MainServer.Instance.AddXmlRPCHandler("GetBalance", GetBalanceHandler);              
+                        MainServer.Instance.AddXmlRPCHandler("AddBankerMoney", AddBankerMoneyHandler);      
+                        MainServer.Instance.AddXmlRPCHandler("SendMoney", SendMoneyHandler);                
+                        MainServer.Instance.AddXmlRPCHandler("MoveMoney", MoveMoneyHandler);                
 
-                        MainServer.Instance.AddXmlRPCHandler("getCurrencyQuote", quote_func); // add php 2023
-                        MainServer.Instance.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func); // add php 2023
-                        MainServer.Instance.AddXmlRPCHandler("buyLandPrep", landBuy_func); // add php 2023
+                        MainServer.Instance.AddXmlRPCHandler("getCurrencyQuote", quote_func); 
+                        MainServer.Instance.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func); 
+                        MainServer.Instance.AddXmlRPCHandler("buyLandPrep", landBuy_func); 
                     }
                 }
 

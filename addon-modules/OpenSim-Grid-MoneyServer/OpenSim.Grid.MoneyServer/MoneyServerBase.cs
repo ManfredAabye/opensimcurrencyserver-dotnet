@@ -70,15 +70,21 @@ namespace OpenSim.Grid.MoneyServer
         IConfig m_server_config;
         IConfig m_cert_config;
 
-
         /// <summary>
-        /// Money Server Base
+        /// Initializes a new instance of the MoneyServerBase class.
         /// </summary>
+        /// <remarks>
+        /// This constructor initializes the MoneyServerBase object and sets up the console and logging.
+        /// </remarks>
         public MoneyServerBase()
         {
+            // Initialize the console for the Money Server
             m_console = new LocalConsole("MoneyServer ");
+
+            // Set the main console instance to the Money Server console
             MainConsole.Instance = m_console;
-            //m_log.Info("[MONEY SERVER]: Starting...");
+
+            // Log a message to indicate that the Money Server is initializing
             m_log.Info("[MONEY SERVER]: Initializing Money Server module and loading configurations...");
         }
 
@@ -93,6 +99,7 @@ namespace OpenSim.Grid.MoneyServer
                 Interval = 60 * 1000,
                 Enabled = true
             };
+
 
             // Add event handler to check transactions
             checkTimer.Elapsed += CheckTransaction;
@@ -129,10 +136,23 @@ namespace OpenSim.Grid.MoneyServer
         /// </summary>
         private void CheckTransaction(object sender, ElapsedEventArgs e)
         {
-            long ticksToEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks;
-            int unixEpochTime = (int)((DateTime.UtcNow.Ticks - ticksToEpoch) / 10000000);
-            int deadTime = unixEpochTime - DEAD_TIME;
-            m_moneyDBService.SetTransExpired(deadTime);
+            if (m_moneyDBService == null)
+            {
+                m_log.Error("m_moneyDBService is null, cannot check transactions.");
+                return;
+            }
+
+            try
+            {
+                long ticksToEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks;
+                int unixEpochTime = (int)((DateTime.UtcNow.Ticks - ticksToEpoch) / 10000000);
+                int deadTime = unixEpochTime - DEAD_TIME;
+                m_moneyDBService.SetTransExpired(deadTime);
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("Error in CheckTransaction: {0}", ex.Message);
+            }
         }
 
         /// <summary>
