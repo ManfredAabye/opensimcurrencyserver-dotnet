@@ -22,6 +22,14 @@ by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for Do
 
 ## TODO: 
 test landtool.php currency.php
+Debug and test...
+
+The MoneyServer now writes many errors to the console
+MoneyServer.ini
+
+     ; Log XML-RPC request to file or console based on debug settings
+     DebugConsole = true
+     DebugFile = false
 
 helpers Robust.ini:
 
