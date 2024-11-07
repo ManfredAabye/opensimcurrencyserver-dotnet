@@ -209,6 +209,45 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
+        public bool BuyMoney(UUID transactionID, string userID, int amount)
+        {
+            MySQLSuperManager dbm = GetLockedConnection();
+
+            try {
+                return dbm.Manager.BuyMoney(transactionID, userID, amount);
+            }
+            catch (MySql.Data.MySqlClient.MySqlException e)
+            {
+                e.ToString();
+                dbm.Manager.Reconnect();
+                return dbm.Manager.BuyMoney(transactionID, userID, amount);
+            }
+            catch (Exception e)
+            {
+                m_log.Error(e);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+        public bool BuyCurrency(int amount, int currencyType)
+        {
+            if (amount <= 0)
+            {
+                throw new ArgumentException("Amount must be greater than zero", nameof(amount));
+            }
+
+            if (currencyType <= 0)
+            {
+                throw new ArgumentException("Currency type must be greater than zero", nameof(currencyType));
+            }
+
+            // implementation goes here
+            return true;
+        }
+
 
         /// <summary>Sets the total sale.</summary>
         /// <param name="transaction">The transaction.</param>

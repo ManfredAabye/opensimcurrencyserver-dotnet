@@ -153,8 +153,12 @@ namespace OpenSim.Modules.Currency
         private int TeleportMinPrice = 2;
         private float TeleportPriceExponent = 2.0f;
         private float EnergyEfficiency = 1.0f;
+        private int PriceLandTax = 0;
+        private int PriceLand = 0;
+        private int PriceCurrency = 0;
 
-
+        /// <summary>The m RPC handlers</summary>
+        private Dictionary<string, XmlRpcMethod> m_rpcHandlers;
 
         /// <summary>
         /// Initializes the specified scene.
@@ -278,6 +282,11 @@ namespace OpenSim.Modules.Currency
                 PriceObjectRent = economyConfig.GetFloat("PriceObjectRent", PriceObjectRent);
                 PriceObjectScaleFactor = economyConfig.GetFloat("PriceObjectScaleFactor", PriceObjectScaleFactor);
                 PriceParcelRent = economyConfig.GetInt("PriceParcelRent", PriceParcelRent);
+
+                PriceLand = economyConfig.GetInt("PriceLand", PriceLand);  // Test
+                PriceCurrency = economyConfig.GetInt("PriceCurrency", PriceCurrency); // Test
+                PriceLandTax = economyConfig.GetInt("PriceLandTax", PriceLandTax); // Test
+
                 PriceGroupCreate = economyConfig.GetInt("PriceGroupCreate", PriceGroupCreate);
                 TeleportMinPrice = economyConfig.GetInt("TeleportMinPrice", TeleportMinPrice);
                 TeleportPriceExponent = economyConfig.GetFloat("TeleportPriceExponent", TeleportPriceExponent);
@@ -303,15 +312,18 @@ namespace OpenSim.Modules.Currency
             }
         }
 
+        // Um detailliert zu verstehen, was passiert, loggen Sie Testanfragen an den processPHP-Handler.
+        // Sie können LogXmlRpcRequest verwenden, um sicherzustellen, dass die Anfrage korrekt gelesen wird und die Parameter erwartungsgemäß sind.
+        // Wenn es eine unerwartete Anfrage ohne currencyBuy-Parameter gibt, könnte das zu einer null-Referenz führen.
 
-        // Test
-        /// <summary>The m RPC handlers</summary>
-        private Dictionary<string, XmlRpcMethod> m_rpcHandlers;
+        // To understand in detail what is happening, log test requests to the processPHP handler.
+        // You can use LogXmlRpcRequest to make sure the request is read correctly and the parameters are as expected.
+        // If there is an unexpected request without currencyBuy parameters, this could result in a null reference.
 
-
-        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+        /*
+        public void processPHP_old(IOSHttpRequest request, IOSHttpResponse response)
         {
-            m_log.InfoFormat("[MONEY MODULE]: Received request at {0}", request.RawUrl);
+            m_log.InfoFormat("[PROZESS PHP]: Received request at {0}", request.RawUrl);
 
             // Logge den XML-RPC-Request in eine Datei
             LogXmlRpcRequest(request);
@@ -319,22 +331,51 @@ namespace OpenSim.Modules.Currency
             try
             {
                 MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
-                m_log.InfoFormat("[MONEY MODULE]: Successfully processed request.");
+                m_log.InfoFormat("[PROZESS PHP]: Successfully processed request.");
             }
             //catch (Exception ex)
             //{
-            //    m_log.ErrorFormat("[MONEY MODULE]: Error processing request: {0}", ex.Message);
+            //    m_log.ErrorFormat("[PROZESS PHP]: Error processing request: {0}", ex.Message);
             //    response.StatusCode = 500; // Interner Serverfehler
             //    response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             //}
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY MODULE]: Error processing request. URL: {0}, Error: {1}", request.RawUrl, ex.ToString());
+                m_log.ErrorFormat("[PROZESS PHP]: Error processing request. URL: {0}, Error: {1}", request.RawUrl, ex.ToString());
+                response.StatusCode = 500;
+                response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
+            }
+        }
+        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+        {
+            if (request == null || response == null)
+            {
+                m_log.ErrorFormat("[PROZESS PHP]: Null request or response received.");
+                return;
+            }
+
+            m_log.InfoFormat("[PROZESS PHP]: Received request at {0}", request.RawUrl);
+
+            // Logge den XML-RPC-Request in eine Datei
+            //LogXmlRpcRequestFile(request);
+            // oder Console
+            LogXmlRpcRequest(request);
+            m_log.ErrorFormat("[PROZESS PHP]: Response received: ", request);
+
+            try
+            {
+                MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+                m_log.InfoFormat("[PROZESS PHP]: Successfully processed request.");
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[PROZESS PHP]: Error processing request. URL: {0}, Error: {1}", request.RawUrl, ex.ToString());
                 response.StatusCode = 500;
                 response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
         }
 
+        // In Datei
         private void LogXmlRpcRequestFile(IOSHttpRequest request)
         {
             try
@@ -360,6 +401,7 @@ namespace OpenSim.Modules.Currency
                 m_log.ErrorFormat("[MONEY MODULE]: Error logging XML-RPC request: {0}", ex.Message);
             }
         }
+        // In Console
         private void LogXmlRpcRequest(IOSHttpRequest request)
         {
             try
@@ -384,11 +426,13 @@ namespace OpenSim.Modules.Currency
         }
 
 
+
         private int CalculateCost(int currencyAmount)
         {
-            // Beispielberechnung: 1 Einheit kostet 10
-            int pricePerUnit = 10;
-            return currencyAmount * pricePerUnit;
+            // Beispielberechnung: 1 Einheit kostet 1
+            //int pricePerUnit = 1;
+            //return currencyAmount * pricePerUnit;
+            return 0;
         }
 
 
@@ -426,11 +470,11 @@ namespace OpenSim.Modules.Currency
                 m_log.InfoFormat("[MONEY MODULE]: Estimated cost for {0} currency is {1}", amount, estimatedCost);
 
                 Hashtable quoteResponse = new Hashtable
-        {
-            { "success", true },
-            { "currency", currencyResponse },
-            { "confirm", "asdfad9fj39ma9fj" }
-        };
+                {
+                    { "success", true },
+                    { "currency", currencyResponse },
+                    { "confirm", "asdfad9fj39ma9fj" }
+                };
 
                 return new XmlRpcResponse { Value = quoteResponse };
             }
@@ -520,7 +564,7 @@ namespace OpenSim.Modules.Currency
 
             return ret;
         }
-
+        */
         // Test End 2023
 
 
@@ -557,14 +601,15 @@ namespace OpenSim.Modules.Currency
                         // Stellen Sie sicher, dass m_rpcHandlers korrekt initialisiert ist und dass MainServer.Instance nicht null ist.
                         // Falls m_rpcHandlers nicht in Initialise() gesetzt wurde, fügen Sie eine Initialisierung hinzu:
                         m_rpcHandlers = new Dictionary<string, XmlRpcMethod>(); 
-                        m_rpcHandlers.Add("getCurrencyQuote", quote_func); 
-                        m_rpcHandlers.Add("buyCurrency", buy_func); 
-                        m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func); 
-                        m_rpcHandlers.Add("buyLandPrep", landBuy_func); 
+                        //m_rpcHandlers.Add("getCurrencyQuote", quote_func); 
+                        //m_rpcHandlers.Add("buyCurrency", buy_func); 
+                        //m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func); 
+                        //m_rpcHandlers.Add("buyLandPrep", landBuy_func);
 
-                        MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
-                        MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
-                        m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers.");
+
+                        //MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
+                        //MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
+                        //m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers.");
 
                         MainServer.Instance.AddXmlRPCHandler("OnMoneyTransfered", OnMoneyTransferedHandler);
                         MainServer.Instance.AddXmlRPCHandler("UpdateBalance", BalanceUpdateHandler);
@@ -574,9 +619,9 @@ namespace OpenSim.Modules.Currency
                         MainServer.Instance.AddXmlRPCHandler("SendMoney", SendMoneyHandler);                
                         MainServer.Instance.AddXmlRPCHandler("MoveMoney", MoveMoneyHandler);                
 
-                        MainServer.Instance.AddXmlRPCHandler("getCurrencyQuote", quote_func); 
-                        MainServer.Instance.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func); 
-                        MainServer.Instance.AddXmlRPCHandler("buyLandPrep", landBuy_func); 
+                        //MainServer.Instance.AddXmlRPCHandler("getCurrencyQuote", quote_func); 
+                        //MainServer.Instance.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func); 
+                        //MainServer.Instance.AddXmlRPCHandler("buyLandPrep", landBuy_func); 
                     }
                 }
 

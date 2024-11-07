@@ -1172,6 +1172,30 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
             return bRet;
         }
 
+        public bool BuyMoney(UUID transactionID, string userID, int amount)
+        {
+            string sql = string.Empty;
+            bool bRet = false;
+            MySqlCommand cmd = null;
+
+            sql = "BEGIN;";
+            sql += "UPDATE " + Table_of_Transactions + "," + Table_of_Balances;
+            sql += " SET balance = balance + ?amount, " + Table_of_Transactions + ".status = ?status ";
+            sql += " WHERE UUID = ?tranid AND user = ?userid;";
+            sql += "COMMIT;";
+
+            cmd = new MySqlCommand(sql, dbcon);
+            cmd.Parameters.AddWithValue("?amount", amount);
+            cmd.Parameters.AddWithValue("?userid", userID);
+            cmd.Parameters.AddWithValue("?status", (int)Status.SUCCESS_STATUS); //Success
+            cmd.Parameters.AddWithValue("?tranid", transactionID.ToString());
+
+            if (cmd.ExecuteNonQuery() > 0) bRet = true;
+
+            cmd.Dispose();
+            return bRet;
+        }
+
         /// <summary>Initializes the total sales table.</summary>
         private void initTotalSalesTable()
         {

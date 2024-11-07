@@ -43,6 +43,15 @@ namespace OpenSim.Grid.MoneyServer
         /// <param name="amount">The amount.</param>
         bool giveMoney(UUID transactionID, string receiverID, int amount);
 
+        /// <summary>Buys money for a user.</summary>
+        /// <param name="transactionID">The transaction identifier.</param>
+        /// <param name="userID">The user identifier.</param>
+        /// <param name="amount">The amount to buy.</param>
+        /// <returns>True if the purchase was successful, false otherwise.</returns>
+        bool BuyMoney(UUID transactionID, string userID, int amount);
+
+        bool BuyCurrency(int amount, int cost);
+
         /// <summary>Adds the transaction.</summary>
         /// <param name="transaction">The transaction.</param>
         bool addTransaction(TransactionData transaction);
