@@ -1,4 +1,4 @@
-Verstanden! Um in C# eine vollständige Funktion zu erstellen, die eine XML-RPC-Nachricht empfängt und bestätigt, dass alles in Ordnung ist, können wir die bisherigen Klassen und Strukturen nutzen und eine `CurrencyHandler`-Klasse erstellen. Diese Klasse könnte eine Methode enthalten, die auf Anfragen zum Aktualisieren von Währungen reagiert und dann eine Bestätigungsantwort zurücksendet.
+Um in C# eine vollständige Funktion zu erstellen, die eine XML-RPC-Nachricht empfängt und bestätigt, dass alles in Ordnung ist, können wir die bisherigen Klassen und Strukturen nutzen und eine `CurrencyHandler`-Klasse erstellen. Diese Klasse könnte eine Methode enthalten, die auf Anfragen zum Aktualisieren von Währungen reagiert und dann eine Bestätigungsantwort zurücksendet.
 
 ### Beispiel: Implementierung einer `CurrencyHandler`-Klasse in C#
 
