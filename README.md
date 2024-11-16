@@ -8,6 +8,8 @@
 
 .
 
+## Buying land without landtool.php is now possible.
+
 OpenSim Currency Server for OpenSim 0.9.3.x Dev (X64/Unix/DotNet6) & (X64/Unix/DotNet8)
 
 Everything works except the landtool.php currency.php test.
@@ -21,20 +23,5 @@ From Original DTL/NSL Money Server for X64/Unix/DotNet and Windows 10/11 64bit w
 by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8.
 
 ## TODO: 
-test landtool.php currency.php
+Insert currency.php now
 
-Debug and test...
-
-The MoneyServer now writes many errors to the console
-
-MoneyServer.ini
-
-     ; Log XML-RPC request to file or console based on debug settings
-     DebugConsole = true
-     DebugFile = false
-
-helpers Robust.ini:
-
-     economy = ${Const|BaseURL}:8008/
-
-Further communication information is available in the console.
