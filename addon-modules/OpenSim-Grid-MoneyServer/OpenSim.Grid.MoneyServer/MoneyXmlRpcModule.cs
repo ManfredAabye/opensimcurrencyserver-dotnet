@@ -15,27 +15,33 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Reflection;
-using System.Collections;
-using System.Net;
-using System.Security.Cryptography;
 using log4net;
+
 using Nini.Config;
+
+using NSL.Certificate.Tools;
+using NSL.Network.XmlRpc;
+
 using Nwc.XmlRpc;
+
 using OpenMetaverse;
+
+using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using OpenSim.Framework;
 using OpenSim.Framework.Servers.HttpServer;
-using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using OpenSim.Modules.Currency;
-using NSL.Network.XmlRpc;
-using NSL.Certificate.Tools;
-using OpenSim.Framework.Servers;
-using System.IO;
 
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.IO;
+using System.Net;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Xml;
+using System.Xml.Serialization;
 
 
 namespace OpenSim.Grid.MoneyServer
@@ -210,11 +216,15 @@ namespace OpenSim.Grid.MoneyServer
         /// <summary>Registers stream handlers for PHP scripts.</summary>
         private void RegisterStreamHandlers()
         {
-            m_httpServer.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
-            m_httpServer.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
+            m_log.Info("[MONEY XMLRPC]: Registering currency.php  handlers.");
+            m_httpServer.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", CurrencyProcessPHP));
+
+            m_log.Info("[MONEY XMLRPC]: Registering landtool.php  handlers.");
+            m_httpServer.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", LandtoolProcessPHP));
+
             m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers.");
         }
-
+                
         /// <summary>Posts the initialise.</summary>
         public void PostInitialise()
         {
@@ -222,6 +232,91 @@ namespace OpenSim.Grid.MoneyServer
 
         private Dictionary<string, XmlRpcMethod> m_rpcHandlers = new Dictionary<string, XmlRpcMethod>();
 
+        /*
+        RegisterHandlers
+
+        Die Funktion RegisterHandlers verknüpft verschiedene Methoden mit bestimmten XML-RPC-Endpunkten. 
+        Diese Methoden sind Handler, die ausgeführt werden, wenn ein bestimmter XML-RPC-Request eingeht. 
+        Die Registrierung erfolgt mit AddXmlRPCHandler.
+
+            Beispiel:
+
+        m_httpServer.AddXmlRPCHandler("ClientLogin", handleClientLogin);
+
+        Hier wird die Methode handleClientLogin mit dem Endpunkt ClientLogin registriert. 
+        Wenn ein XML-RPC-Request an diesen Endpunkt gesendet wird, verarbeitet handleClientLogin die Anfrage.
+
+        Anwendungsfälle:
+
+            ClientLogin: Verarbeitung von Benutzeranmeldungen.
+            GetBalance: Abfrage des Kontostands.
+            TransferMoney: Durchführung von Geldtransaktionen.
+            buyLandPrep: Vorbereitung eines Landkaufs.
+            getCurrencyQuote: Abruf von Währungsumrechnungskursen.
+
+        Mögliche fehlende Funktionen:
+        1. Benutzerverwaltung
+
+            CreateUser: Zum Erstellen neuer Benutzerkonten.
+            DeleteUser: Zum Löschen eines bestehenden Benutzerkontos.
+            UpdateUserDetails: Um Benutzerdetails zu aktualisieren, wie z. B. Namen, E-Mail-Adresse oder Kontoinformationen.
+
+        2. Erweiterte Kontostandsverwaltung
+
+            FreezeAccount: Zum Einfrieren eines Kontos bei verdächtigen Aktivitäten.
+            UnfreezeAccount: Um ein eingefrorenes Konto wieder zu aktivieren.
+            AdjustBalance: Manuelle Anpassung des Kontostands (z. B. für Admins).
+
+        3. Detaillierte Transaktionsverwaltung
+
+            GetTransactionHistory: Abfrage der vollständigen Transaktionshistorie eines Benutzers.
+            RefundTransaction: Rückerstattung einer Transaktion.
+            ValidateTransaction: Validierung einer Transaktion vor ihrer Ausführung.
+
+        4. Benachrichtigungen
+
+            SendUserNotification: Senden von spezifischen Benachrichtigungen an Benutzer.
+            GetPendingNotifications: Abrufen ausstehender Benachrichtigungen.
+
+        5. Währungsverwaltung
+
+            SetExchangeRate: Festlegen eines Wechselkurses für eine virtuelle Währung.
+            GetExchangeRate: Abruf des aktuellen Wechselkurses.
+            ConvertCurrency: Konvertierung einer Währungseinheit in eine andere.
+
+        6. Sicherheitsfunktionen
+
+            AuthenticateSession: Authentifizierung von Benutzer-Sessions, um unautorisierte Zugriffe zu verhindern.
+            InvalidateSession: Ungültigmachen von Sitzungen (z. B. nach Logout oder Timeout).
+            VerifyTransactionSignature: Überprüfung der Signatur einer Transaktion zur Sicherheitsgewährleistung.
+
+        7. System- und Debugging-Funktionen
+
+            Ping: Einfacher Test, um sicherzustellen, dass der Server erreichbar ist.
+            HealthCheck: Überprüfung des Serverstatus und der Systemressourcen.
+            LogTransactionDetails: Aufzeichnen detaillierter Transaktionsprotokolle für Debugging-Zwecke.
+
+        8. Land- und Immobilienmanagement
+
+            SellLand: Verfügbarmachen von Land für den Verkauf.
+            CancelLandSale: Abbrechen eines laufenden Landverkaufs.
+            GetLandDetails: Abrufen von Details zu einem Grundstück.
+
+        9. Erweiterte Zahlungsabwicklung
+
+            SchedulePayment: Planen von zukünftigen Zahlungen.
+            CancelScheduledPayment: Stornieren einer geplanten Zahlung.
+            SplitPayment: Aufteilen einer Zahlung auf mehrere Empfänger.
+
+        10. Reporting
+
+            GenerateAccountStatement: Erstellen eines Kontoauszugs für einen bestimmten Zeitraum.
+            GetSystemStatistics: Abrufen von Systemstatistiken, wie z. B. die Anzahl aktiver Benutzer oder die Summe durchgeführter Transaktionen.
+
+        Um die RegisterHandlers-Methode zu vervollständigen, sollten zusätzliche Funktionen hinzugefügt werden, 
+        die Benutzerverwaltung, erweiterte Zahlungsabwicklungen, Sicherheitsmaßnahmen und Reporting umfassen. 
+        Dies stellt sicher, dass das System robust, sicher und flexibel ist.
+        */
         /// <summary>Registers the handlers.</summary>
         public void RegisterHandlers()
         {
@@ -238,8 +333,8 @@ namespace OpenSim.Grid.MoneyServer
             m_httpServer.AddXmlRPCHandler("PayMoneyCharge", handlePayMoneyCharge);          // added
             m_httpServer.AddXmlRPCHandler("AddBankerMoney", handleAddBankerMoney);          // added
 
-            m_httpServer.AddXmlRPCHandler("SendMoney", handleScriptTransaction);       // added
-            m_httpServer.AddXmlRPCHandler("MoveMoney", handleScriptTransaction);       // added
+            m_httpServer.AddXmlRPCHandler("SendMoney", handleScriptTransaction);
+            m_httpServer.AddXmlRPCHandler("MoveMoney", handleScriptTransaction);
 
             // this is from original DTL. not check yet.
             m_httpServer.AddXmlRPCHandler("WebLogin", handleWebLogin);
@@ -249,71 +344,693 @@ namespace OpenSim.Grid.MoneyServer
             m_httpServer.AddXmlRPCHandler("WebGetTransactionNum", handleWebGetTransactionNum);
 
             // Land Buy Test
-            m_httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
-            m_httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
+            m_httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep);
+            m_httpServer.AddXmlRPCHandler("buyLandPrep", buyLandPrep);
 
             // Currency Buy Test
-            //m_httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
-            //m_httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
-            m_httpServer.AddXmlRPCHandler("getCurrencyQuote", getCurrencyQuote_func);
-            m_httpServer.AddXmlRPCHandler("buyCurrency", buyCurrency_func);
+            m_httpServer.AddXmlRPCHandler("getCurrencyQuote", getCurrencyQuote);
+            m_httpServer.AddXmlRPCHandler("buyCurrency", buyCurrency);
 
             // Money Transfer Test
             m_httpServer.AddXmlRPCHandler("OnMoneyTransfered", OnMoneyTransferedHandler);
             m_httpServer.AddXmlRPCHandler("UpdateBalance", BalanceUpdateHandler);
             m_httpServer.AddXmlRPCHandler("UserAlert", UserAlertHandler);
+
+            // Angebot oder eine Information zu einem Kaufpreis
+            m_httpServer.AddXmlRPCHandler("quote", quote);
         }
 
-        // Neu 07.11.2024
-        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+        // ##################     Land Buy     ##################
+
+        // Flexibilität: Die gesamte Logik wird innerhalb von LandtoolProcessPHP und ihren Hilfsfunktionen abgewickelt.
+        // Fehlerbehandlung: Umfassende Überprüfung auf fehlende Daten oder Fehler während der Verarbeitung.
+        // Unabhängigkeit: Keine Abhängigkeit von externen Funktionen oder Modulen.
+
+        private void LandtoolProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
-            if (request == null || response == null)
+            m_log.InfoFormat("[MONEY XMLRPC MODULE]: LANDTOOL PROCESS PHP starting...");
+
+            if (httpRequest == null || httpResponse == null)
             {
-                m_log.ErrorFormat("[MONEY XML RPC MODULE]: Null request or response received.");
+                m_log.Error("[MONEY XMLRPC MODULE]: Invalid request or response object.");
                 return;
             }
-
-            m_log.InfoFormat("[MONEY XML RPC MODULE]: Received request at {0}", request.RawUrl);
-
-            if (m_DebugFile)
-                LogXmlRpcRequestFile(request);
-            else if (m_DebugConsole)
-                LogXmlRpcRequestConsole(request);
 
             try
             {
                 // XML-String aus Anfrage lesen
                 string requestBody;
-                using (StreamReader reader = new StreamReader(request.InputStream, Encoding.UTF8))
+                using (var reader = new StreamReader(httpRequest.InputStream, Encoding.UTF8))
                 {
                     requestBody = reader.ReadToEnd();
                 }
 
-                // Erstelle und parsen XML-RPC-Anfrage
-                var parsedRequest = ParseXmlRpcRequest(requestBody);
+                // XML-Daten parsen
+                XmlDocument doc = new XmlDocument();
+                doc.LoadXml(requestBody);
 
-                if (parsedRequest is CurrencyQuoteRequest currencyRequest)
+                // Methode extrahieren
+                XmlNode methodNameNode = doc.SelectSingleNode("/methodCall/methodName");
+                if (methodNameNode == null)
                 {
-                    m_log.InfoFormat("[MONEY XML RPC MODULE]: Processed Currency Quote Request for AgentId: {0}", currencyRequest.AgentId);
-                    // Prozessiere currencyRequest weiter nach Bedarf
-                }
-                else if (parsedRequest is LandPurchaseRequest landRequest)
-                {
-                    m_log.InfoFormat("[MONEY XML RPC MODULE]: Processed Land Purchase Request for AgentId: {0}, BillableArea: {1}", landRequest.AgentId, landRequest.BillableArea);
-                    // Prozessiere landRequest weiter nach Bedarf
+                    throw new Exception("Missing method name in XML-RPC request.");
                 }
 
-                response.StatusCode = 200;
-                response.RawBuffer = Encoding.UTF8.GetBytes("<response>Success</response>");
-                m_log.InfoFormat("[MONEY XML RPC MODULE]: Successfully processed request.");
+                string methodName = methodNameNode.InnerText;
+                XmlNodeList members = doc.SelectNodes("//param/value/struct/member");
+
+                // Variablen für Landanfrage initialisieren
+                string agentId = null, secureSessionId = null, language = null;
+                int billableArea = 0, currencyBuy = 0;
+
+                // Werte aus der XML-Struktur extrahieren
+                foreach (XmlNode member in members)
+                {
+                    string name = member.SelectSingleNode("name")?.InnerText;
+                    string value = member.SelectSingleNode("value")?.InnerText;
+
+                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(value)) continue;
+
+                    switch (name)
+                    {
+                        case "agentId": agentId = value; break;
+                        case "billableArea": billableArea = int.Parse(value); break;
+                        case "currencyBuy": currencyBuy = int.Parse(value); break;
+                        case "language": language = value; break;
+                        case "secureSessionId": secureSessionId = value; break;
+                    }
+                }
+                m_log.InfoFormat("[MONEY XMLRPC MODULE]: agentId ", agentId);
+                m_log.InfoFormat("[MONEY XMLRPC MODULE]: billableArea", billableArea);
+                m_log.InfoFormat("[MONEY XMLRPC MODULE]: currencyBuy", currencyBuy);
+                m_log.InfoFormat("[MONEY XMLRPC MODULE]: language", language);
+                m_log.InfoFormat("[MONEY XMLRPC MODULE]: secureSessionId", secureSessionId);
+
+                if (methodName == "preflightBuyLandPrep")
+                {
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Preflight Land Purchase Request for AgentId: {0}, BillableArea: {1}",
+                        agentId, billableArea);
+
+                    // Preflight-Prüfung
+                    Hashtable preflightResponse = PerformPreflightLandCheck(agentId, billableArea, currencyBuy, language, secureSessionId);
+                    if (!(bool)preflightResponse["success"])
+                    {
+                        m_log.Error("[MONEY XMLRPC MODULE]: Preflight check failed.");
+                        httpResponse.StatusCode = 400;
+                        httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Preflight check failed</response>");
+                        return;
+                    }
+
+                    // Erfolgreiche Antwort zurückgeben
+                    httpResponse.StatusCode = 200;
+                    XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = preflightResponse };
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
+                }
+                else if (methodName == "buyLandPrep")
+                {
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Land Purchase Request for AgentId: {0}, BillableArea: {1}",
+                        agentId, billableArea);
+
+                    // Landkauf durchführen
+                    Hashtable purchaseResponse = ProcessLandPurchase(agentId, billableArea, currencyBuy, language, secureSessionId);
+
+                    // Überprüfung der Antwort
+                    if (!(bool)purchaseResponse["success"])
+                    {
+                        m_log.Error("[MONEY XMLRPC MODULE]: Land purchase failed.");
+                        httpResponse.StatusCode = 400;
+                        httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Land purchase failed</response>");
+                        return;
+                    }
+
+                    // Erfolgreiche Antwort zurückgeben
+                    httpResponse.StatusCode = 200;
+                    XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = purchaseResponse };
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
+                }
+                else
+                {
+                    m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Unknown method name: {0}", methodName);
+                    httpResponse.StatusCode = 400;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
+                }
             }
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY XML RPC MODULE]: Error processing request. URL: {0}, Error: {1}", request.RawUrl, ex.ToString());
-                response.StatusCode = 500;
-                response.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
+                m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Error processing LANDTOOL request. Error: {0}", ex.ToString());
+                httpResponse.StatusCode = 500;
+                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
         }
+
+        // Beispiel einer Funktion zur Preflight-Prüfung
+        // PerformPreflightLandCheck:
+        // Simuliert die Preflight-Prüfung für den Landkauf.
+        // Gibt eine Erfolgsmeldung in Form einer Hashtable zurück.
+        private Hashtable PerformPreflightLandCheck(string agentId, int billableArea, int currencyBuy, string language, string secureSessionId)
+        {
+            // Beispielhafte Logik für Preflight-Prüfung
+            m_log.InfoFormat("[MONEY XMLRPC MODULE]: Preflight check for AgentId: {0}, Area: {1}, CurrencyBuy: {2}", agentId, billableArea, currencyBuy);
+
+            // Erfolg simulieren
+            return new Hashtable
+            {
+                { "success", true },
+                { "agentId", agentId },
+                { "billableArea", billableArea },
+                { "currencyBuy", currencyBuy },
+                { "message", "Preflight check passed" }
+            };
+        }
+
+        // Beispiel einer Funktion zur Bearbeitung eines Landkaufs
+        // ProcessLandPurchase:
+        // Simuliert die Durchführung des Landkaufs.
+        // Gibt ebenfalls eine Erfolgsmeldung als Hashtable zurück.
+        private Hashtable ProcessLandPurchase(string agentId, int billableArea, int currencyBuy, string language, string secureSessionId)
+        {
+            // Beispielhafte Logik für Landkauf
+            m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing land purchase for AgentId: {0}, Area: {1}, CurrencyBuy: {2}", agentId, billableArea, currencyBuy);
+
+            // Erfolg simulieren
+            return new Hashtable
+            {
+                { "success", true },
+                { "agentId", agentId },
+                { "billableArea", billableArea },
+                { "currencyBuy", currencyBuy },
+                { "message", "Land purchase completed successfully" }
+            };
+        }
+
+
+        // ##################     Currency Buy     ##################
+        /*
+        private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
+        {
+            m_log.InfoFormat("[MONEY XMLRPC MODULE]: CURRENCY PROCESS PHP starting...");
+
+            try
+            {
+                // XML-String aus der Anfrage lesen
+                string requestBody;
+                using (StreamReader reader = new StreamReader(httpRequest.InputStream, Encoding.UTF8))
+                {
+                    requestBody = reader.ReadToEnd();
+                }
+
+                // XML-Daten parsen
+                XmlDocument doc = new XmlDocument();
+                doc.LoadXml(requestBody);
+
+                // Methode extrahieren
+                XmlNode methodNameNode = doc.SelectSingleNode("/methodCall/methodName");
+                if (methodNameNode == null)
+                {
+                    throw new Exception("Missing method name in XML-RPC request.");
+                }
+
+                string methodName = methodNameNode.InnerText;
+                XmlNodeList members = doc.SelectNodes("//param/value/struct/member");
+
+                // Variablen für Anfragedaten
+                string agentId = null, secureSessionId = null, language = null, viewerBuildVersion = null, viewerChannel = null;
+                int currencyBuy = 0, viewerMajorVersion = 0, viewerMinorVersion = 0, viewerPatchVersion = 0;
+
+                // Werte aus der XML-Struktur extrahieren
+                foreach (XmlNode member in members)
+                {
+                    string name = member.SelectSingleNode("name")?.InnerText;
+                    string value = member.SelectSingleNode("value")?.InnerText;
+
+                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(value)) continue;
+
+                    switch (name)
+                    {
+                        case "agentId": agentId = value; break;
+                        case "currencyBuy": currencyBuy = int.Parse(value); break;
+                        case "language": language = value; break;
+                        case "secureSessionId": secureSessionId = value; break;
+                        case "viewerBuildVersion": viewerBuildVersion = value; break;
+                        case "viewerChannel": viewerChannel = value; break;
+                        case "viewerMajorVersion": viewerMajorVersion = int.Parse(value); break;
+                        case "viewerMinorVersion": viewerMinorVersion = int.Parse(value); break;
+                        case "viewerPatchVersion": viewerPatchVersion = int.Parse(value); break;
+                    }
+                }
+
+                // Methode verarbeiten
+                if (methodName == "getCurrencyQuote")
+                {
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Currency Quote Request for AgentId: {0}", agentId);
+
+                    // Implementierung der getCurrencyQuote-Logik direkt in dieser Methode
+                    Hashtable responseValue = new Hashtable
+                    {
+                        { "success", true },
+                        { "agentId", agentId },
+                        { "currencyBuy", currencyBuy },
+                        { "language", language },
+                        { "quote", GenerateCurrencyQuote(currencyBuy) }, // Generiere ein Währungsangebot
+                        { "viewerBuildVersion", viewerBuildVersion },
+                        { "viewerChannel", viewerChannel },
+                        { "viewerMajorVersion", viewerMajorVersion },
+                        { "viewerMinorVersion", viewerMinorVersion },
+                        { "viewerPatchVersion", viewerPatchVersion }
+                    };
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: agentId ", agentId);
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: currencyBuy", currencyBuy);
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: language", language);
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: quote", GenerateCurrencyQuote(currencyBuy));
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerBuildVersion", viewerBuildVersion);
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerChannel", viewerChannel);
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerMajorVersion", viewerMajorVersion);
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerMinorVersion", viewerMinorVersion);
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerPatchVersion", viewerPatchVersion);
+
+
+
+                    XmlRpcResponse quoteResponse = new XmlRpcResponse
+                    {
+                        Value = responseValue
+                    };
+
+                    // Erfolgreiche Antwort zurückgeben
+                    httpResponse.StatusCode = 200;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(quoteResponse.ToString());
+                }
+                else
+                {
+                    m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Unknown method name: {0}", methodName);
+                    httpResponse.StatusCode = 400;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Error processing CURRENCY request. Error: {0}", ex.ToString());
+                httpResponse.StatusCode = 500;
+                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
+            }
+        }
+
+        // Beispiel einer Funktion, um einen Währungswert zu generieren
+        private int GenerateCurrencyQuote(int currencyBuy)
+        {
+            // Logik, um den Währungswert zu berechnen
+            // Dies könnte durch eine externe API oder interne Berechnungen erfolgen
+            const double exchangeRate = 1.5; // Beispielkurs
+            return (int)(currencyBuy * exchangeRate);
+        }
+        */
+
+        // NEU 16. 11.2024 14:39
+
+        private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
+        {
+            m_log.InfoFormat("[MONEY XMLRPC MODULE]: CURRENCY PROCESS PHP starting...");
+
+            try
+            {
+                // XML-String aus Anfrage lesen
+                string requestBody;
+                using (StreamReader reader = new StreamReader(httpRequest.InputStream, Encoding.UTF8))
+                {
+                    requestBody = reader.ReadToEnd();
+                }
+
+                // XML-Daten parsen
+                XmlDocument doc = new XmlDocument();
+                doc.LoadXml(requestBody);
+
+                // Methode extrahieren
+                XmlNode methodNameNode = doc.SelectSingleNode("/methodCall/methodName");
+                if (methodNameNode == null)
+                {
+                    throw new Exception("Missing method name in XML-RPC request.");
+                }
+
+                string methodName = methodNameNode.InnerText;
+                XmlNodeList members = doc.SelectNodes("//param/value/struct/member");
+
+                // Variablen für Anfragedaten
+                string agentId = null, secureSessionId = null;
+                int currencyBuy = 0;
+
+                // Werte aus der XML-Struktur extrahieren
+                foreach (XmlNode member in members)
+                {
+                    string name = member.SelectSingleNode("name")?.InnerText;
+                    string value = member.SelectSingleNode("value")?.InnerText;
+
+                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(value)) continue;
+
+                    switch (name)
+                    {
+                        case "agentId": agentId = value; break;
+                        case "currencyBuy": currencyBuy = int.Parse(value); break;
+                        case "secureSessionId": secureSessionId = value; break;
+                    }
+                }
+
+                // Währungsangebot oder Kauf basierend auf der Methode verarbeiten
+                if (methodName == "getCurrencyQuote")
+                {
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Currency Quote for AgentId: {0}", agentId);
+
+                    Hashtable responseValue = GetCurrencyQuote(agentId, secureSessionId, currencyBuy);
+
+                    XmlRpcResponse quoteResponse = new XmlRpcResponse { Value = responseValue };
+
+                    // Erfolgreiche Antwort zurückgeben
+                    httpResponse.StatusCode = 200;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(quoteResponse.ToString());
+                }
+                else if (methodName == "buyCurrency")
+                {
+                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Buy Currency for AgentId: {0}", agentId);
+
+                    Hashtable responseValue = BuyCurrency(agentId, secureSessionId, currencyBuy);
+
+                    XmlRpcResponse buyResponse = new XmlRpcResponse { Value = responseValue };
+
+                    // Erfolgreiche Antwort zurückgeben
+                    httpResponse.StatusCode = 200;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(buyResponse.ToString());
+                }
+                else
+                {
+                    m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Unknown method name: {0}", methodName);
+                    httpResponse.StatusCode = 400;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Error processing CURRENCY request. Error: {0}", ex.ToString());
+                httpResponse.StatusCode = 500;
+                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        private Hashtable GetCurrencyQuote(string agentId, string secureSessionId, int currencyBuy)
+        {
+            // Datenbankabfrage, um die Sitzung zu validieren (Dummy-Datenbank-Check)
+            bool sessionValid = ValidateSession(agentId, secureSessionId);
+
+            if (!sessionValid)
+            {
+                return new Hashtable
+                {
+                    { "success", false },
+                    { "errorMessage", "Unable to authenticate user. Click URL for more info." },
+                    { "errorURI", "https://example.com" } // Beispiel-URL
+                };
+            }
+
+            // Angebot generieren
+            int estimatedCost = ConvertToReal(currencyBuy);
+
+            Hashtable currencyData = new Hashtable
+            {
+                { "estimatedCost", estimatedCost },
+                { "currencyBuy", currencyBuy }
+            };
+
+            return new Hashtable
+            {
+                { "success", true },
+                { "currency", currencyData },
+                { "confirm", "1234567883789" } // Beispiel-Bestätigungscode
+            };
+        }
+
+
+
+
+        private object BuyCurrency(object request, IPEndPoint client = null)
+        {
+            // BankerAvatar Prüfung
+            if (string.IsNullOrEmpty(m_bankerAvatar) || m_bankerAvatar == "00000000-0000-0000-0000-00000000000")
+            {
+                // Fehlerantwort zurückgeben, wenn der BankerAvatar ungültig ist
+                Hashtable responseData = new Hashtable
+        {
+            { "success", false },
+            { "errorMessage", "Currency transactions are currently disabled or all avatars can buy." },
+            { "errorURI", "https://example.com" }
+        };
+                return responseData; // Für Hashtable-basierte Rückgabe
+            }
+
+            try
+            {
+                // Unterscheidung zwischen XML-RPC und Hashtable
+                if (request is XmlRpcRequest xmlRequest)
+                {
+                    // XML-RPC Request bearbeiten
+                    if (xmlRequest.Params.Count == 0)
+                    {
+                        m_log.Error("[MONEY XMLRPC]: buyCurrency: No parameters in request.");
+                        return new XmlRpcResponse();
+                    }
+
+                    Hashtable requestData = (Hashtable)xmlRequest.Params[0];
+                    string currencyAmount = (string)requestData["currencyAmount"];
+                    int amount = int.Parse(currencyAmount);
+
+                    int cost = CalculateCost(amount);
+                    m_log.InfoFormat("[MONEY XMLRPC]: buyCurrency: Cost for {0} currency units: {1}", amount, cost);
+
+                    // Transaktion durchführen (DB-Operation)
+                    bool transactionSuccess = m_moneyDBService.BuyCurrency(amount, cost, m_bankerAvatar);
+
+                    XmlRpcResponse xmlResponse = new XmlRpcResponse();
+                    Hashtable responseData = new Hashtable();
+                    responseData.Add("success", transactionSuccess);
+                    if (!transactionSuccess)
+                    {
+                        responseData.Add("errorMessage", "Transaction failed. Please try again later.");
+                    }
+                    xmlResponse.Value = responseData;
+                    return xmlResponse; // Rückgabe für XML-RPC
+
+                }
+                else if (request is Hashtable requestData)
+                {
+                    // Hashtable Request bearbeiten
+                    string agentId = (string)requestData["agentId"];
+                    string secureSessionId = (string)requestData["secureSessionId"];
+                    int currencyBuy = (int)requestData["currencyBuy"];
+
+                    // Sitzung validieren
+                    bool sessionValid = ValidateSession(agentId, secureSessionId);
+                    if (!sessionValid)
+                    {
+                        return new Hashtable
+                        {
+                            { "success", false },
+                            { "errorMessage", "Unable to authenticate user. Click URL for more info." },
+                            { "errorURI", "https://example.com" }
+                        };
+                    }
+
+                    // Kosten berechnen
+                    int cost = ConvertToReal(currencyBuy);
+
+                    // Minimaler Kaufbetrag
+                    const int minimumReal = 10;
+                    if (cost < minimumReal)
+                    {
+                        return new Hashtable
+                        {
+                            { "success", false },
+                            { "errorMessage", $"Minimum purchase amount is {minimumReal}." },
+                            { "errorURI", "https://example.com" }
+                        };
+                    }
+
+                    // Transaktion verarbeiten
+                    bool transactionSuccess = ProcessTransaction(agentId, cost, m_bankerAvatar);
+
+                    if (!transactionSuccess)
+                    {
+                        return new Hashtable
+                        {
+                            { "success", false },
+                            { "errorMessage", "Transaction failed. Please try again later." }
+                        };
+                    }
+
+                    // Erfolgreich Währung übertragen
+                    MoveMoney(m_bankerAvatar, agentId, currencyBuy, "Currency purchase");
+
+                    return new Hashtable
+                    {
+                        { "success", true }
+                    };
+                }
+                else
+                {
+                    m_log.Error("[MONEY]: Invalid request type.");
+                    return new Hashtable
+                    {
+                        { "success", false },
+                        { "errorMessage", "Invalid request format." }
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY]: Exception occurred in BuyCurrency: {0}", ex.Message);
+                return new Hashtable
+                {
+                    { "success", false },
+                    { "errorMessage", "An error occurred during the transaction." }
+                };
+            }
+        }
+
+        private void MoveMoney(string m_bankerAvatar, string agentId, int currencyBuy, string v)
+        {
+            throw new NotImplementedException();
+        }
+
+
+
+        // BuyCurrency 1 BuyCurrency(string agentId, string secureSessionId, int currencyBuy)
+
+        // , m_bankerAvatar
+
+
+        private Hashtable BuyCurrency(string agentId, string secureSessionId, int currencyBuy)
+        { //002
+            // Datenbankabfrage, um die Sitzung zu validieren (Dummy-Datenbank-Check)
+            bool sessionValid = ValidateSession(agentId, secureSessionId);
+
+            if (!sessionValid)
+            {
+                return new Hashtable
+                {
+                    { "success", false },
+                    { "errorMessage", "Unable to authenticate user. Click URL for more info." },
+                    { "errorURI", "https://example.com" } // Beispiel-URL
+                };
+            }
+
+            // Berechnung der Kosten
+            int cost = ConvertToReal(currencyBuy);
+
+            // Minimaler Kaufbetrag (Beispiel)
+            const int minimumReal = 10;
+            if (cost < minimumReal)
+            {
+                return new Hashtable
+                {
+                    { "success", false },
+                    { "errorMessage", $"Minimum purchase amount is {minimumReal}." },
+                    { "errorURI", "https://example.com" }
+                };
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // Transaktion verarbeiten (Dummy-Prozess)
+            bool transactionSuccessful = ProcessTransaction(agentId, cost);
+
+            if (!transactionSuccessful)
+            {
+                return new Hashtable
+                {
+                    { "success", false },
+                    { "errorMessage", "Transaction failed. Gateway denied your charge." },
+                    { "errorURI", "https://example.com" }
+                };
+            }
+
+            // Erfolgreiche Antwort
+            return new Hashtable
+            {
+                { "success", true }
+            };
+        }
+
+        private bool ProcessTransaction(string agentId, int cost)
+        {
+            throw new NotImplementedException();
+        }
+
+        /*
+        Dummy-Funktionen
+        ValidateSession: Simuliert die Sitzungvalidierung.
+        ConvertToReal: Konvertiert die virtuelle Währung in reale Kosten.
+        ProcessTransaction: Simuliert eine Zahlungsabwicklung.
+        */
+
+        private bool ValidateSession(string agentId, string secureSessionId)
+        {
+            // Beispielhafte Validierung (immer erfolgreich für Testzwecke)
+            return !string.IsNullOrEmpty(agentId) && !string.IsNullOrEmpty(secureSessionId);
+        }
+
+        private int ConvertToReal(int currencyBuy)
+        {
+            const double exchangeRate = 1.5; // Beispielkurs
+            return (int)(currencyBuy * exchangeRate);
+        }
+
+        private bool ProcessTransaction(string agentId, int cost, string m_bankerAvatar)
+        {
+            // Simuliert eine erfolgreiche Transaktion
+            m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processed transaction for AgentId: {0}, Cost: {1}", agentId, cost);
+            return true;
+        }
+
+
+
+
+        // ##################     XMLRPC Pasing     ##################
+
+
+        /*
+        OSParseXmlRpcRequest
+
+        Dient zum Parsen und Verarbeiten des XML-RPC-Anfrageinhalts. 
+        Basierend auf der Methode im XML-Dokument wird ein entsprechendes Objekt (z. B. CurrencyQuoteRequest oder LandPurchaseRequest) erstellt.
+
+            Wichtige Schritte:
+                Analysiert die methodCall-Struktur der XML-Daten.
+                Verarbeitet verschiedene Methoden wie getCurrencyQuote oder preflightBuyLandPrep.
+                Gibt ein stark typisiertes Objekt zurück, das die spezifischen Anfragedaten enthält.
+        */
         // Methode zur Verarbeitung und Parsing der XML-RPC-Anfrage
         private object ParseXmlRpcRequest(string xml)
         {
@@ -378,6 +1095,13 @@ namespace OpenSim.Grid.MoneyServer
             throw new Exception("Unknown method name: " + methodName);
         }
 
+        /*
+        LogXmlRpcRequestFile und LogXmlRpcRequestConsole
+        Schreiben Debug-Informationen zu XML-RPC-Anfragen entweder in eine Datei oder in die Konsole. Diese Funktionen helfen, Probleme zu diagnostizieren.
+            Beispiel:
+        string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xmlrpc_debug.log");
+        File.AppendAllText(logFilePath, logEntry);
+        */
         private void LogXmlRpcRequestFile(IOSHttpRequest request)
         {
             try
@@ -404,6 +1128,13 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
+        /*
+        LogXmlRpcRequestFile und LogXmlRpcRequestConsole
+        Schreiben Debug-Informationen zu XML-RPC-Anfragen entweder in eine Datei oder in die Konsole. Diese Funktionen helfen, Probleme zu diagnostizieren.
+            Beispiel:
+        string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xmlrpc_debug.log");
+        File.AppendAllText(logFilePath, logEntry);
+        */
         private void LogXmlRpcRequestConsole(IOSHttpRequest request)
         {
             m_log.InfoFormat("[MONEY XML RPC MODULE]: {0}", new StreamReader(request.InputStream).ReadToEnd());  // TODO: test
@@ -429,7 +1160,13 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
+        /*
+        CalculateCost
+        Berechnet die Kosten basierend auf einer Währungsmenge.
+            Beispiel:
 
+        return currencyAmount * m_CalculateCurrency;
+        */
         /// <summary>
         /// Calculates the cost based on the given currency amount.
         /// </summary>
@@ -446,6 +1183,14 @@ namespace OpenSim.Grid.MoneyServer
             //return 0;
         }
 
+        /*
+        Spezifische Handler (z. B. OnMoneyTransferedHandler, BalanceUpdateHandler, UserAlertHandler)
+        Diese Funktionen verarbeiten bestimmte Anfragen:
+
+            OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
+            BalanceUpdateHandler: Verarbeitet Updates zum Kontostand.
+            UserAlertHandler: Handhabt Benutzerbenachrichtigungen.
+        */
         public XmlRpcResponse OnMoneyTransferedHandler(XmlRpcRequest request, IPEndPoint client)
         {
             if (request == null)
@@ -485,6 +1230,15 @@ namespace OpenSim.Grid.MoneyServer
                 return new XmlRpcResponse();
             }
         }
+
+        /*
+        Spezifische Handler (z. B. OnMoneyTransferedHandler, BalanceUpdateHandler, UserAlertHandler)
+        Diese Funktionen verarbeiten bestimmte Anfragen:
+
+            OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
+            BalanceUpdateHandler: Verarbeitet Updates zum Kontostand.
+            UserAlertHandler: Handhabt Benutzerbenachrichtigungen.
+        */
         public XmlRpcResponse BalanceUpdateHandler(XmlRpcRequest request, IPEndPoint client)
         {
             if (request == null)
@@ -519,6 +1273,15 @@ namespace OpenSim.Grid.MoneyServer
                 return new XmlRpcResponse();
             }
         }
+
+        /*
+        Spezifische Handler (z. B. OnMoneyTransferedHandler, BalanceUpdateHandler, UserAlertHandler)
+        Diese Funktionen verarbeiten bestimmte Anfragen:
+
+            OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
+            BalanceUpdateHandler: Verarbeitet Updates zum Kontostand.
+            UserAlertHandler: Handhabt Benutzerbenachrichtigungen.
+        */
         public XmlRpcResponse UserAlertHandler(XmlRpcRequest request, IPEndPoint client)
         {
             try
@@ -542,7 +1305,8 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        private XmlRpcResponse getCurrencyQuote_func(XmlRpcRequest request, IPEndPoint client)
+        /**/
+        private XmlRpcResponse getCurrencyQuote(XmlRpcRequest request, IPEndPoint client)
         {
             // Log the request for auditing purposes
             m_log.InfoFormat("[MONEY XMLRPC]: handleClient getCurrencyQuote.");
@@ -569,17 +1333,31 @@ namespace OpenSim.Grid.MoneyServer
             return returnval;
         }
 
-        private XmlRpcResponse buyCurrency_func(XmlRpcRequest request, IPEndPoint client)
-        {
+        /*
+        buyCurrency(XmlRpcRequest request, IPEndPoint client)
+        Zweck: Verarbeitet eine Anfrage zum Kauf von virtueller Währung.
+        Details:
+            Liest die angeforderte Währungsmenge aus der Anfrage.
+            Berechnet die Kosten (vermutlich mit einer Funktion CalculateCost).
+            Führt eine Kaufoperation in einer Datenbank durch (m_moneyDBService.BuyCurrency).
+            Gibt eine Erfolgsantwort zurück.
+        Anwendung: Diese Funktion wird aufgerufen, wenn ein Benutzer virtuelle Währung erwerben möchte.
+        */
+
+        // BuyCurrency 1 BuyCurrency(string agentId, string secureSessionId, int currencyBuy)
+        // BuyCurrency 2 buyCurrency(XmlRpcRequest request, IPEndPoint client)
+
+        private XmlRpcResponse buyCurrency(XmlRpcRequest request, IPEndPoint client)
+        { //002
             if (request == null)
             {
-                m_log.Error("[MONEY XMLRPC]: buyCurrency_func: request is null.");
+                m_log.Error("[MONEY XMLRPC]: buyCurrency: request is null.");
                 return new XmlRpcResponse();
             }
 
             if (client == null)
             {
-                m_log.Error("[MONEY XMLRPC]: buyCurrency_func: client is null.");
+                m_log.Error("[MONEY XMLRPC]: buyCurrency: client is null.");
                 return new XmlRpcResponse();
             }
 
@@ -590,7 +1368,7 @@ namespace OpenSim.Grid.MoneyServer
                 int amount = int.Parse(currencyAmount);
 
                 int cost = CalculateCost(amount);
-                m_log.InfoFormat("[MONEY XMLRPC]: buyCurrency_func: Cost for {0} currency units: {1}", amount, cost);
+                m_log.InfoFormat("[MONEY XMLRPC]: buyCurrency: Cost for {0} currency units: {1}", amount, cost);
 
                 // Assuming m_moneyDBService is an instance of a class that handles database operations
                 m_moneyDBService.BuyCurrency(amount, cost);
@@ -603,11 +1381,19 @@ namespace OpenSim.Grid.MoneyServer
             }
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY XMLRPC]: buyCurrency_func: Exception occurred: {0}", ex.Message);
+                m_log.ErrorFormat("[MONEY XMLRPC]: buyCurrency: Exception occurred: {0}", ex.Message);
                 return new XmlRpcResponse();
             }
         }
 
+        /*
+        buy_func(XmlRpcRequest request, IPEndPoint client)
+        Zweck: Handhabt den Kaufvorgang.
+        Details:
+            Eine sehr einfache Funktion, die lediglich eine Erfolgsmeldung zurückgibt.
+            Wird vermutlich für grundlegende Tests oder als Platzhalter verwendet.
+        Anwendung: Einsatz für grundlegende Kaufoperationen oder Tests.
+        */
         /// <summary>Handles the buy function.</summary>
         /// <param name="request">The XML-RPC request.</param>
         /// <param name="client">The client endpoint.</param>
@@ -627,11 +1413,19 @@ namespace OpenSim.Grid.MoneyServer
             return returnval;
         }
 
+        /*
+        quote(XmlRpcRequest request, IPEndPoint client)
+        Zweck: Bietet ein Angebot oder eine Information zu einem Kaufpreis.
+        Details:
+            Liefert eine Erfolgsantwort mit Platzhaltern für Währungsdetails und eine Bestätigung.
+            TODO-Kommentare deuten darauf hin, dass die Details und der Bestätigungscode noch implementiert werden müssen.
+        Anwendung: Bereitstellung von Informationen zu Währungskursen oder Transaktionen.
+        */
         /// <summary> Handles the get currency quote request.</summary>
         /// <param name="request">The incoming XML-RPC request.</param>
         /// <param name="client">The client that made the request.</param>
         /// <returns>An XML-RPC response with the currency quote.</returns>
-        private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint client)
+        private XmlRpcResponse quote(XmlRpcRequest request, IPEndPoint client)
         {
             // Log the request for auditing purposes
             m_log.InfoFormat("[MONEY XMLRPC]: handleClient getCurrencyQuote.");
@@ -658,20 +1452,178 @@ namespace OpenSim.Grid.MoneyServer
             return returnval;
         }
 
-        /// <summary>Lands the buy function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="client">The client.</param>
-        private XmlRpcResponse landBuy_func(XmlRpcRequest request, IPEndPoint client)
+
+
+
+
+
+        // Neu II 15.11.2024
+
+
+
+
+
+
+        private XmlRpcResponse preflightBuyLandPrep(XmlRpcRequest request, IPEndPoint client)
         {
+            m_log.InfoFormat("[MONEY XMLRPC]: preflightBuyLandPrep starting...");
+
             if (request == null)
             {
-                m_log.Error("[MONEY XMLRPC]: landBuy_func: request is null.");
+                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep: request is null.");
                 return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
             }
 
             if (client == null)
             {
-                m_log.Error("[MONEY XMLRPC]: landBuy_func: client is null.");
+                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep: client is null.");
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+
+            try
+            {
+                Hashtable requestData = (Hashtable)request.Params[0];
+                if (requestData == null)
+                {
+                    m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep: request data is null.");
+                    return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                }
+
+                int billableArea = Convert.ToInt32(requestData["billableArea"]);
+                int currencyBuy = Convert.ToInt32(requestData["currencyBuy"]);
+
+                // Log the received data for debugging
+                m_log.InfoFormat("[MONEY XMLRPC]: Received billableArea = {0}, currencyBuy = {1}", billableArea, currencyBuy);
+
+                // Process preflight logic here
+                if (billableArea < 0 || currencyBuy < 0)
+                {
+                    m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep: Invalid input values.");
+                    return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                }
+
+                // Simulate sending response
+                XmlRpcResponse response = new XmlRpcResponse();
+                Hashtable responseValue = new Hashtable
+                {
+                    { "success", true },
+                    { "billableArea", billableArea },
+                    { "currencyBuy", currencyBuy }
+                };
+                response.Value = responseValue;
+                return response;
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: preflightBuyLandPrep: {0}", ex.Message);
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+        }
+
+        private XmlRpcResponse buyLandPrep(XmlRpcRequest request, IPEndPoint client)
+        {
+            m_log.InfoFormat("[MONEY XMLRPC]: buyLandPrep starting...");
+
+            if (request == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: buyLandPrep: request is null.");
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+
+            if (client == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: buyLandPrep: client is null.");
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+
+            try
+            {
+                Hashtable requestData = (Hashtable)request.Params[0];
+                if (requestData == null)
+                {
+                    m_log.Error("[MONEY XMLRPC]: buyLandPrep: request data is null.");
+                    return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                }
+
+                string agentId = requestData["agentId"]?.ToString();
+                string secureSessionId = requestData["secureSessionId"]?.ToString();
+                string language = requestData["language"]?.ToString();
+                int billableArea = Convert.ToInt32(requestData["billableArea"]);
+                int currencyBuy = Convert.ToInt32(requestData["currencyBuy"]);
+
+                // Log the received data for debugging
+                m_log.InfoFormat("[MONEY XMLRPC]: Received agentId = {0}, secureSessionId = {1}, billableArea = {2}, currencyBuy = {3}",
+                    agentId, secureSessionId, billableArea, currencyBuy);
+
+                if (string.IsNullOrEmpty(agentId) || string.IsNullOrEmpty(secureSessionId))
+                {
+                    m_log.Error("[MONEY XMLRPC]: buyLandPrep: Missing required parameters.");
+                    return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                }
+
+                // Process purchase logic here
+                bool purchaseSuccessful = ProcessLandPurchase(agentId, secureSessionId, billableArea, currencyBuy);
+                XmlRpcResponse response = new XmlRpcResponse();
+                Hashtable responseValue = new Hashtable
+        {
+            { "success", purchaseSuccessful }
+        };
+                response.Value = responseValue;
+                return response;
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: buyLandPrep: {0}", ex.Message);
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+        }
+
+        // Helper function to simulate land purchase logic
+        private bool ProcessLandPurchase(string agentId, string secureSessionId, int billableArea, int currencyBuy)
+        {
+            // Simulate some purchase validation
+            if (billableArea > 0 && currencyBuy >= billableArea * 10) // Example: each square meter costs 10 currency units
+            {
+                m_log.InfoFormat("[MONEY XMLRPC]: ProcessLandPurchase: Purchase successful for Agent {0}.", agentId);
+                return true;
+            }
+
+            m_log.WarnFormat("[MONEY XMLRPC]: ProcessLandPurchase: Purchase failed for Agent {0}.", agentId);
+            return false;
+        }
+
+
+
+
+
+
+
+        // Neu II 15.11.2024 Ende
+
+        /*
+        buyLandPrep(XmlRpcRequest request, IPEndPoint client)
+        Zweck: Handhabt den Kauf von virtuellem Land.
+        Details:
+            Überprüft die Anfrage und den Client.
+            Gibt standardmäßig eine Erfolgsantwort zurück.
+            Kann erweitert werden, um den Kaufvorgang tatsächlich zu verarbeiten.
+        Anwendung: Wird verwendet, um Landkäufe zu ermöglichen oder zu validieren.
+        */
+        /// <summary>Lands the buy function.</summary>
+        /// <param name="request">The request.</param>
+        /// <param name="client">The client.</param>
+        /*
+        private XmlRpcResponse buyLandPrep(XmlRpcRequest request, IPEndPoint client)
+        {
+            if (request == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: buyLandPrep: request is null.");
+                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+            }
+
+            if (client == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: buyLandPrep: client is null.");
                 return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
             }
 
@@ -686,25 +1638,35 @@ namespace OpenSim.Grid.MoneyServer
             }
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY XMLRPC]: landBuy_func: {0}", ex.Message);
+                m_log.ErrorFormat("[MONEY XMLRPC]: buyLandPrep: {0}", ex.Message);
                 return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
             }
         }
+        */
 
+        /*
+        preflightBuyLandPrep(XmlRpcRequest request, IPEndPoint client)
+        Zweck: Führt Vorabprüfungen für Landkäufe durch.
+        Details:
+            Ähnlich wie landBuy, prüft diese Funktion die Gültigkeit von Anfrage und Client.
+            Kann für Sicherheitsprüfungen oder Vorbereitungsvorgänge verwendet werden.
+        Anwendung: Vorbereitung vor der Ausführung eines Landkaufs.
+        */
         /// <summary>Preflights the buy land prep function.</summary>
         /// <param name="request">The request.</param>
         /// <param name="client">The client.</param>
-        private XmlRpcResponse preflightBuyLandPrep_func(XmlRpcRequest request, IPEndPoint client)
+        /*
+        private XmlRpcResponse preflightBuyLandPrep(XmlRpcRequest request, IPEndPoint client)
         {
             if (request == null)
             {
-                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep_func: request is null.");
+                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep: request is null.");
                 return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
             }
 
             if (client == null)
             {
-                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep_func: client is null.");
+                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep: client is null.");
                 return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
             }
 
@@ -719,11 +1681,20 @@ namespace OpenSim.Grid.MoneyServer
             }
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY XMLRPC]: preflightBuyLandPrep_func: {0}", ex.Message);
+                m_log.ErrorFormat("[MONEY XMLRPC]: preflightBuyLandPrep: {0}", ex.Message);
                 return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
             }
         }
+        */
 
+        /*
+        GetSSLCommonName(XmlRpcRequest request) und GetSSLCommonName()
+        Zweck: Extrahiert den SSL Common Name aus einer Anfrage oder gibt den gespeicherten Wert zurück.
+        Details:
+            Verwendet, um Client-Zertifikate zu validieren.
+            Sicherstellt, dass nur autorisierte Clients zugreifen können.
+        Anwendung: Wichtiger Bestandteil der Sicherheitsüberprüfung im System.
+        */
         /// <summary>Gets the name of the SSL common.</summary>
         /// <param name="request">The request.</param>
         public string GetSSLCommonName(XmlRpcRequest request)
@@ -743,13 +1714,23 @@ namespace OpenSim.Grid.MoneyServer
             }
             return m_sslCommonName;
         }
-
+        /**/
         /// <summary>Gets the name of the SSL common.</summary>
         public string GetSSLCommonName()
         {
             return m_sslCommonName;
         }
 
+        /*
+        handleClientLogin(XmlRpcRequest request, IPEndPoint remoteClient)
+        Zweck: Handhabt die Anmeldung eines Clients und überprüft dessen Berechtigungen.
+        Details:
+            Überprüft den SSL Common Name und liest Client-Daten aus der Anfrage.
+            Führt Validierungen für verschiedene Avatar-Typen durch (z. B. Gast, NPC, Fremd-Avatar).
+            Speichert Sitzungsdaten und initialisiert ein Benutzerkonto in der Datenbank, falls erforderlich.
+            Gibt die Währungsbilanz des Benutzers zurück.
+        Anwendung: Wird beim Einloggen eines Benutzers in das System verwendet.
+        */
         /// <summary>
         /// Get the user balance when user entering a parcel.
         /// </summary>
@@ -958,6 +1939,14 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+        /*
+        handleClientLogout(XmlRpcRequest request, IPEndPoint remoteClient)
+        Zweck: Beendet die Sitzung eines Benutzers.
+        Details:
+            Entfernt Sitzungs- und sichere Sitzungsdaten aus internen Dictionaries.
+            Gibt eine Erfolgsantwort zurück.
+        Anwendung: Aufgerufen, wenn ein Benutzer sich abmeldet.
+        */
         /// <summary>
         /// handle incoming transaction
         /// </summary>
@@ -1007,6 +1996,19 @@ namespace OpenSim.Grid.MoneyServer
         }
 
 
+        /*
+        handleTransaction
+        Zweck:
+        Verarbeitet normale Geldtransaktionen zwischen zwei Nutzern.
+        Wichtige Schritte:
+            Authentifiziert den Absender basierend auf Sitzungsinformationen.
+            Validiert Eingabedaten wie senderID, receiverID, amount usw.
+            Erstellt eine Transaktion und speichert sie in der Datenbank.
+            Überträgt das Geld und benachrichtigt beide Parteien, falls erfolgreich.
+        Verwendung:
+        Diese Funktion wird für reguläre Geldtransfers genutzt, wie das Bezahlen eines anderen Benutzers, 
+        beispielsweise für Dienste oder virtuelle Objekte.
+        */
         /// <summary>
         /// handle incoming transaction
         /// </summary>
@@ -1143,6 +2145,17 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+        /*
+         handleForceTransaction
+        Zweck:
+        Ermöglicht die Durchführung einer "erzwungenen" Transaktion, bei der Authentifizierungsprüfungen ignoriert werden können.
+        Wichtige Schritte:
+            Prüft, ob erzwungene Transaktionen aktiviert sind.
+            Validiert die Eingabedaten.
+            Fügt die Transaktion direkt in die Datenbank ein und führt sie durch.
+        Verwendung:
+        Diese Funktion wird in Ausnahmefällen eingesetzt, z. B. wenn ein Administrator Gelder zwischen Konten verschieben muss, ohne die üblichen Prüfungen.
+         */
         // added by Fumi.Iseki
         /// <summary>
         /// handle incoming force transaction. no check senderSessionID and senderSecureSessionID
@@ -1272,7 +2285,17 @@ namespace OpenSim.Grid.MoneyServer
             }
             return response;
         }
-
+        /*
+        handleScriptTransaction
+        Zweck:
+        Ermöglicht Skripten das Senden von Geldtransaktionen, indem sie eine vorher festgelegte Zugriffsmethode verwenden.
+        Wichtige Schritte:
+            Verifiziert die Zugriffsbefugnis anhand eines geheimen Codes.
+            Erstellt eine Transaktion und führt sie aus.
+            Benachrichtigt die betroffenen Benutzer über die Transaktion.
+        Verwendung:
+        Wird genutzt, um Geldtransaktionen durch externe oder serverseitige Skripte durchzuführen, z. B. für automatisierte Zahlungen.
+        */
         // added by Fumi.Iseki
         /// <summary>
         /// handle scripted sending money transaction.
@@ -1412,6 +2435,17 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+        /*
+        handleAddBankerMoney
+        Zweck:
+        Erlaubt einem als "Banker" definierten Benutzer, Geld auf ein Konto hinzuzufügen.
+        Wichtige Schritte:
+            Prüft, ob der anfragende Benutzer der autorisierte "Banker" ist.
+            Fügt die Transaktion in die Datenbank ein.
+            Führt die Gutschrift auf das Zielkonto aus.
+        Verwendung:
+        Wird verwendet, um Guthaben auf Benutzerkonten hinzuzufügen, z. B. durch einen Admin oder Banker in einem virtuellen Währungssystem.
+        */
         // added by Fumi.Iseki
         /// <summary>
         /// handle adding money transaction.
@@ -1520,6 +2554,33 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+
+        /*
+        handlePayMoneyCharge
+        Zweck:
+            Führt eine Transaktion aus, bei der Geld von einem Benutzer (senderID) an einen anderen Benutzer (receiverID) übertragen wird.
+            Prüft dabei die Authentizität der Sitzung (Session-IDs) und speichert Transaktionsdetails in einer Datenbank.
+        Hauptablauf:
+            Parameterprüfung: Die Funktion prüft, ob alle notwendigen Parameter (z. B. senderID, amount, transactionType) in der Anforderung enthalten sind.
+            Authentifizierung: Vergleicht die Sitzungs-IDs und sichert die Sitzung ab.
+            Transaktionserstellung: Erstellt einen Transaktionsdatensatz mit Status PENDING und speichert ihn in der Datenbank.
+            Benachrichtigung: Sendet eine Nachricht über die erfolgte Transaktion und führt die eigentliche Überweisung durch (NotifyTransfer).
+            Fehlerbehandlung: Verarbeitet mögliche Ausfälle, etwa durch Rollback der Transaktion.
+        Anwendung:
+        Diese Funktion wird von einem Client aufgerufen, der eine Zahlung oder Gebühr auslösen möchte. Beispielaufruf:
+
+        XmlRpcRequest request = new XmlRpcRequest();
+        request.Params = new Hashtable
+        {
+            {"senderID", "uuid-of-sender"},
+            {"receiverID", "uuid-of-receiver"},
+            {"amount", 100},
+            {"description", "Payment for services"}
+        };
+
+        XmlRpcResponse response = handlePayMoneyCharge(request, remoteClient);
+
+        */
         // added by Fumi.Iseki
         /// <summary>
         /// handle pay charge transaction. no check receiver information.
@@ -1629,6 +2690,18 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+        /*
+        NotifyTransfer
+        Zweck:
+            Setzt eine begonnene Transaktion fort, nachdem sie vom Benutzer bestätigt wurde.
+            Führt die eigentliche Übertragung der Mittel zwischen Konten durch und aktualisiert den Kontostand.
+        Hauptablauf:
+            Transaktionsvalidierung: Prüft, ob die Transaktion in der Datenbank abgeschlossen ist (Status.SUCCESS_STATUS).
+            Kontostandaktualisierung: Aktualisiert den Kontostand von Sender und Empfänger.
+            Objektübergabe: Benachrichtigt andere Dienste, wenn ein virtueller Gegenstand Teil der Transaktion ist.
+        Anwendung:
+        Wird intern von der Anwendung aufgerufen, nachdem eine Transaktion erfolgreich autorisiert wurde.
+        */
         //  added by Fumi.Iseki
         /// <summary>
         /// Continue transaction with no confirm.
@@ -1739,6 +2812,28 @@ namespace OpenSim.Grid.MoneyServer
             return false;
         }
 
+        /*
+        handleGetBalance
+        Zweck:
+            Ermittelt den Kontostand eines Benutzers.
+        Hauptablauf:
+            Parameterprüfung: Die Funktion prüft, ob alle notwendigen Parameter (clientUUID, clientSessionID, clientSecureSessionID) bereitgestellt werden.
+            Authentifizierung: Verifiziert die Sitzung anhand der bereitgestellten IDs.
+            Kontostandabfrage: Ruft den Kontostand des Benutzers aus der Datenbank ab und gibt diesen zurück.
+        Anwendung:
+        Wird aufgerufen, wenn ein Client den aktuellen Kontostand abfragen möchte. Beispielaufruf:
+
+        XmlRpcRequest request = new XmlRpcRequest();
+        request.Params = new Hashtable
+        {
+            {"clientUUID", "uuid-of-client"},
+            {"clientSessionID", "session-id"},
+            {"clientSecureSessionID", "secure-session-id"}
+        };
+
+        XmlRpcResponse response = handleGetBalance(request, remoteClient);
+
+        */
         /// <summary>
         /// Get the user balance.
         /// </summary>
@@ -1746,8 +2841,6 @@ namespace OpenSim.Grid.MoneyServer
         /// <returns></returns>
         public XmlRpcResponse handleGetBalance(XmlRpcRequest request, IPEndPoint remoteClient)
         {
-            m_log.InfoFormat("[MONEY XMLRPC]: handleGetBalance:");
-
             GetSSLCommonName(request);
 
             Hashtable requestData = (Hashtable)request.Params[0];
@@ -1801,6 +2894,17 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+        /*
+        genericCurrencyXMLRPCRequest
+        Zweck:
+            Generische Funktion zur Kommunikation mit externen Diensten über XML-RPC.
+        Hauptablauf:
+            Parameterprüfung: Prüft, ob die Anforderung gültig ist.
+            Senden der Anforderung: Erstellt eine XML-RPC-Anfrage und sendet sie an die angegebene URI.
+            Fehlerbehandlung: Gibt bei Fehlschlägen einen Fehler-Hash zurück.
+        Anwendung:
+        Diese Funktion wird von anderen Funktionen verwendet, um mit entfernten Diensten zu kommunizieren.
+        */
         /// <summary>   
         /// Generic XMLRPC client abstraction
         /// </summary>   
@@ -1863,6 +2967,16 @@ namespace OpenSim.Grid.MoneyServer
             return moneyRespData;
         }
 
+        /*
+        UpdateBalance
+        Zweck:
+            Aktualisiert den Kontostand eines Benutzers und benachrichtigt ihn optional mit einer Nachricht.
+        Hauptablauf:
+            Sitzungsinformationen abrufen: Sammelt Sitzungsinformationen (clientSessionID, clientSecureSessionID).
+            Benachrichtigung: Sendet eine XML-RPC-Anforderung an den entsprechenden Simulator.
+        Anwendung:
+        Wird intern aufgerufen, wenn der Kontostand nach einer Transaktion geändert wurde.
+        */
         /// <summary>
         /// Update the client balance.We don't care about the result.
         /// </summary>
@@ -1893,6 +3007,21 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
+        /*
+        RollBackTransaction
+        Zweck:
+        Diese Funktion führt einen "Rollback" (Rückgängig machen) einer fehlgeschlagenen Transaktion durch. 
+        Wenn ein Fehler bei der Abwicklung auftritt, wird das Geld vom Empfänger zurück zum Absender überwiesen.
+        Ablauf:
+            Prüft, ob der Betrag vom Empfängerkonto erfolgreich abgezogen wurde.
+            Überweist den Betrag zurück auf das Absenderkonto.
+            Aktualisiert den Transaktionsstatus auf "FAILED_STATUS".
+            Sendet Benachrichtigungen an beide Parteien.
+            Gibt true zurück, wenn der Rollback erfolgreich war, sonst false.
+        Anwendung:
+        Diese Funktion wird aufgerufen, wenn eine Transaktion abgebrochen werden muss, 
+        z. B. bei technischen Fehlern oder wenn der Käufer das gekaufte Objekt nicht erhält.
+        */
         /// <summary>
         /// RollBack the transaction if user failed to get the object paid
         /// </summary>
@@ -1925,7 +3054,19 @@ namespace OpenSim.Grid.MoneyServer
             return false;
         }
 
-
+        /*
+        handleCancelTransfer
+        Zweck:
+        Ermöglicht Benutzern, eine Transaktion aktiv zu stornieren.
+        Ablauf:
+            Liest Transaktions-ID und Sicherheitscode aus der Anfrage aus.
+            Validiert den Sicherheitscode und die Transaktion.
+            Aktualisiert den Status der Transaktion auf "FAILED_STATUS".
+            Gibt eine XML-RPC-Antwort zurück, die angibt, ob die Stornierung erfolgreich war.
+        Anwendung:
+        Diese Methode wird von einem Benutzer ausgelöst, der eine Transaktion abbrechen möchte. 
+                Sie wird typischerweise über eine XML-RPC-Schnittstelle von einem Client aufgerufen.
+        */
         /// <summary>Handles the cancel transfer.</summary>
         /// <param name="request">The request.</param>
         /// <param name="remoteClient">The remote client.</param>
@@ -1978,7 +3119,17 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-
+        /*
+        handleGetTransaction
+        Zweck:
+        Stellt Details zu einer spezifischen Transaktion bereit.
+        Ablauf:
+            Überprüft die Sitzung des Clients.
+            Sucht die Transaktion in der Datenbank anhand der Transaktions-ID.
+            Gibt die Transaktionsdaten (Betrag, Zeit, Typ, Sender, Empfänger, Beschreibung) zurück.
+        Anwendung:
+        Wird verwendet, um Transaktionsdetails anzuzeigen, beispielsweise auf einer Benutzeroberfläche oder in einer App.
+        */
         /// <summary>Handles the get transaction.</summary>
         /// <param name="request">The request.</param>
         /// <param name="remoteClient">The remote client.</param>
@@ -2056,7 +3207,17 @@ namespace OpenSim.Grid.MoneyServer
         }
 
         // In development
-
+        /*
+        handleWebLogin
+        Zweck:
+        Verarbeitet das Einloggen eines Benutzers über eine Weboberfläche.
+        Ablauf:
+            Prüft, ob userID und sessionID angegeben sind.
+            Aktualisiert oder speichert die Sitzung im m_webSessionDic.
+            Gibt Erfolg zurück, wenn die Anmeldung erfolgreich war.
+        Anwendung:
+        Wird aufgerufen, wenn ein Benutzer sich über das Web einloggt.
+        */
         /// <summary>Handles the web login.</summary>
         /// <param name="request">The request.</param>
         /// <param name="remoteClient">The remote client.</param>
@@ -2098,7 +3259,16 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-
+        /*
+        handleWebLogout
+        Zweck:
+        Verarbeitet das Ausloggen eines Benutzers über eine Weboberfläche.
+        Ablauf:
+            Entfernt die Sitzung des Benutzers aus m_webSessionDic.
+            Gibt Erfolg zurück, wenn das Ausloggen erfolgreich war.
+        Anwendung:
+        Wird aufgerufen, wenn ein Benutzer sich über das Web ausloggt.
+        */
         /// <summary>Handles the web logout.</summary>
         /// <param name="request">The request.</param>
         /// <param name="remoteClient">The remote client.</param>
@@ -2139,7 +3309,17 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-
+        /*
+        handleWebGetBalance
+        Zweck:
+        Liefert den Kontostand eines Benutzers über eine Webschnittstelle.
+        Ablauf:
+            Überprüft die Sitzung des Benutzers.
+            Ruft den Kontostand aus der Datenbank ab.
+            Gibt Erfolg und den Kontostand zurück oder einen Fehler, falls etwas schiefgeht.
+        Anwendung:
+        Ermöglicht Benutzern, ihren aktuellen Kontostand einzusehen.
+        */
         /// <summary>
         /// Get balance method for web pages.
         /// </summary>
@@ -2209,6 +3389,17 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+        /*
+        handleWebGetTransaction
+        Zweck:
+        Ruft Transaktionsdaten für eine Webschnittstelle ab.
+        Ablauf:
+            Überprüft die Sitzung des Benutzers.
+            Ruft Transaktionen nach Index, Zeit oder anderen Parametern aus der Datenbank ab.
+            Gibt die Transaktionsdaten zurück.
+        Anwendung:
+        Wird verwendet, um Transaktionsverläufe oder Details auf einer Weboberfläche anzuzeigen.
+        */
         /// <summary>
         /// Get transaction for web pages
         /// </summary>
@@ -2301,6 +3492,17 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+        /*
+        handleWebGetTransactionNum
+        Zweck:
+        Ermittelt die Anzahl der Transaktionen eines Benutzers für einen bestimmten Zeitraum.
+        Ablauf:
+            Überprüft die Sitzung des Benutzers.
+            Ermittelt die Anzahl der Transaktionen in der Datenbank.
+            Gibt die Anzahl oder eine Fehlermeldung zurück.
+        Anwendung:
+        Wird zur Anzeige der Anzahl von Transaktionen in einem bestimmten Zeitraum genutzt, z. B. auf Dashboards.
+        */
         /// <summary>
         /// Get total number of transactions for web pages.
         /// </summary>
@@ -2346,11 +3548,11 @@ namespace OpenSim.Grid.MoneyServer
             responseData["errorMessage"] = "Session check failure, please re-login";
             return response;
         }
+
     }
 
 
 }
-
 // Anfrage - Klassen für spezifische XML-RPC-Methoden
 public class CurrencyQuoteRequest
 {
@@ -2372,4 +3574,77 @@ public class LandPurchaseRequest
     public int CurrencyBuy { get; set; }
     public string Language { get; set; }
     public string SecureSessionId { get; set; }
+}
+
+public abstract class XmlRpcBaseRequest
+{
+    // Gemeinsame Eigenschaften oder Methoden können hier definiert werden
+    string[] AcceptTypes { get; }
+    Encoding ContentEncoding { get; }
+    long ContentLength { get; }
+    long ContentLength64 { get; }
+    string ContentType { get; }
+    bool HasEntityBody { get; }
+    NameValueCollection Headers { get; }
+    string HttpMethod { get; }
+    Stream InputStream { get; }
+    bool IsSecured { get; }
+    bool KeepAlive { get; }
+    NameValueCollection QueryString { get; }
+    Hashtable Query { get; }
+    HashSet<string> QueryFlags { get; }
+    Dictionary<string, string> QueryAsDictionary { get; }
+    string RawUrl { get; }
+    IPEndPoint RemoteIPEndPoint { get; }
+    IPEndPoint LocalIPEndPoint { get; }
+    IPEndPoint RemoteEndPoint { get; }
+    Uri Url { get; }
+    string UriPath { get; }
+    string UserAgent { get; }
+    double ArrivalTS { get; }
+}
+
+/// <summary>
+/// Represents a request to buy currency.
+/// </summary>
+public class BuyCurrencyRequest
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BuyCurrencyRequest"/> class.
+    /// </summary>
+    public BuyCurrencyRequest()
+    {
+        // Initialize any default values or properties here
+    }
+    public string AgentId { get; set; }
+    public int CurrencyBuy { get; set; }
+    public string Language { get; set; }
+    public string SecureSessionId { get; set; }
+    public string ViewerBuildVersion { get; set; }
+    public string ViewerChannel { get; set; }
+    public int ViewerMajorVersion { get; set; }
+    public int ViewerMinorVersion { get; set; }
+    public int ViewerPatchVersion { get; set; }
+
+    /// <summary>
+    /// Gets or sets the amount of currency to buy.
+    /// </summary>
+    /// <value>The amount of currency to buy.</value>
+    public decimal Amount { get; set; }
+
+    /// <summary>
+    /// Gets or sets the currency type.
+    /// </summary>
+    /// <value>The currency type.</value>
+    public string CurrencyType { get; set; }
+
+    /// <summary>
+    /// Validates the request.
+    /// </summary>
+    /// <returns><c>true</c> if the request is valid; otherwise, <c>false</c>.</returns>
+    public bool IsValid()
+    {
+        // Add validation logic here, e.g., check for null or empty values
+        return Amount > 0 && !string.IsNullOrEmpty(CurrencyType);
+    }
 }
