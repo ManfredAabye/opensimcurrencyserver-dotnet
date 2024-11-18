@@ -17,7 +17,9 @@
 
 
 using OpenMetaverse;
+
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
+
 using System.Collections.Generic;
 
 namespace OpenSim.Grid.MoneyServer

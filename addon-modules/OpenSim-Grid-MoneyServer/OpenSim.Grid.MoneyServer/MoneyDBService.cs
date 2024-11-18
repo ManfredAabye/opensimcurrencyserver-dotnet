@@ -15,19 +15,21 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-using System;
-using System.Collections.Generic;
+using log4net;
+
+using OpenMetaverse;
+
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using OpenSim.Modules.Currency;
-using log4net;
+
+using System;
+using System.Collections.Generic;
 using System.Reflection;
-using OpenMetaverse;
-using OpenSim.Framework;
 
 
 namespace OpenSim.Grid.MoneyServer
 {
-    class MoneyDBService :  IMoneyDBService
+    class MoneyDBService : IMoneyDBService
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private string m_connect;
@@ -213,7 +215,8 @@ namespace OpenSim.Grid.MoneyServer
         {
             MySQLSuperManager dbm = GetLockedConnection();
 
-            try {
+            try
+            {
                 return dbm.Manager.BuyMoney(transactionID, userID, amount);
             }
             catch (MySql.Data.MySqlClient.MySqlException e)

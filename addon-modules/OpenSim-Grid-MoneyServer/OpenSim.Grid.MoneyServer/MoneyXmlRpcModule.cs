@@ -30,6 +30,8 @@ using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using OpenSim.Framework;
 using OpenSim.Framework.Servers.HttpServer;
 using OpenSim.Modules.Currency;
+using OpenSim.Region.Framework.Scenes;
+using OpenSim.Services.Interfaces;
 
 using System;
 using System.Collections;
@@ -40,25 +42,32 @@ using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
-using System.Xml.Serialization;
 
 
 namespace OpenSim.Grid.MoneyServer
 {
-    class MoneyXmlRpcModule
+    class MoneyXmlRpcModule : MoneyDBService, IMoneyDBService
     {
+        // ##################     Initial          ##################
+        #region Setup Initial
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+        // MoneyServer settings
         private int m_defaultBalance = 1000;
+        private int m_realMoney = 10; //# Startkapital in EURO Pseudo
+        private int m_gameMoney = 500; //# Startkapital in L$ GamingMoney
 
         private bool m_forceTransfer = false;
         private string m_bankerAvatar = "";
 
+        // Script settings
         private bool m_scriptSendMoney = false;
         private string m_scriptAccessKey = "";
-        private string m_scriptIPaddress = "127.0.0.1";        
+        private string m_scriptIPaddress = "127.0.0.1";
 
+        // HG settings
         private bool m_hg_enable = false;
         private bool m_gst_enable = false;
         private int m_hg_defaultBalance = 0;
@@ -69,13 +78,16 @@ namespace OpenSim.Grid.MoneyServer
         private bool m_DebugConsole = false;
         private bool m_DebugFile = false;
 
+        // Certificate settings
         private bool m_checkServerCert = false;
         private string m_cacertFilename = "";
-
         private string m_certFilename = "";
         private string m_certPassword = "";
 
+        // SSL settings
         private string m_sslCommonName = "";
+
+        private Dictionary<ulong, Scene> m_scenes = new Dictionary<ulong, Scene>();
 
         private NSLCertificateVerify m_certVerify = new NSLCertificateVerify();
 
@@ -126,7 +138,26 @@ namespace OpenSim.Grid.MoneyServer
         /// <param name="moneyCore">The money core.</param>
         public void Initialise(string opensimVersion, IMoneyDBService moneyDBService, IMoneyServiceCore moneyCore)
         {
-            //m_opensimVersion = opensimVersion;
+            ArgumentNullException.ThrowIfNull(moneyDBService);
+
+            ArgumentNullException.ThrowIfNull(moneyCore);
+
+            m_moneyDBService = moneyDBService;
+            m_moneyCore = moneyCore;
+
+            // Get server configuration
+            var serverConfig = m_moneyCore.GetServerConfig() ?? throw new InvalidOperationException("Server configuration is not available");
+
+            // Get certificate configuration
+            var certConfig = m_moneyCore.GetCertConfig() ?? throw new InvalidOperationException("Certificate configuration is not available");
+
+
+
+            // Load configuration values
+            m_defaultBalance = serverConfig.GetInt("DefaultBalance", m_defaultBalance);
+            m_forceTransfer = serverConfig.GetBoolean("EnableForceTransfer", m_forceTransfer);
+            m_bankerAvatar = serverConfig.GetString("BankerAvatar", m_bankerAvatar).ToLower();
+
             m_moneyDBService = moneyDBService;
             m_moneyCore = moneyCore;
             m_server_config = m_moneyCore.GetServerConfig();    // [MoneyServer] Section
@@ -213,6 +244,7 @@ namespace OpenSim.Grid.MoneyServer
             RegisterStreamHandlers();
         }
 
+
         /// <summary>Registers stream handlers for PHP scripts.</summary>
         private void RegisterStreamHandlers()
         {
@@ -224,7 +256,7 @@ namespace OpenSim.Grid.MoneyServer
 
             m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers.");
         }
-                
+
         /// <summary>Posts the initialise.</summary>
         public void PostInitialise()
         {
@@ -232,91 +264,7 @@ namespace OpenSim.Grid.MoneyServer
 
         private Dictionary<string, XmlRpcMethod> m_rpcHandlers = new Dictionary<string, XmlRpcMethod>();
 
-        /*
-        RegisterHandlers
 
-        Die Funktion RegisterHandlers verknüpft verschiedene Methoden mit bestimmten XML-RPC-Endpunkten. 
-        Diese Methoden sind Handler, die ausgeführt werden, wenn ein bestimmter XML-RPC-Request eingeht. 
-        Die Registrierung erfolgt mit AddXmlRPCHandler.
-
-            Beispiel:
-
-        m_httpServer.AddXmlRPCHandler("ClientLogin", handleClientLogin);
-
-        Hier wird die Methode handleClientLogin mit dem Endpunkt ClientLogin registriert. 
-        Wenn ein XML-RPC-Request an diesen Endpunkt gesendet wird, verarbeitet handleClientLogin die Anfrage.
-
-        Anwendungsfälle:
-
-            ClientLogin: Verarbeitung von Benutzeranmeldungen.
-            GetBalance: Abfrage des Kontostands.
-            TransferMoney: Durchführung von Geldtransaktionen.
-            buyLandPrep: Vorbereitung eines Landkaufs.
-            getCurrencyQuote: Abruf von Währungsumrechnungskursen.
-
-        Mögliche fehlende Funktionen:
-        1. Benutzerverwaltung
-
-            CreateUser: Zum Erstellen neuer Benutzerkonten.
-            DeleteUser: Zum Löschen eines bestehenden Benutzerkontos.
-            UpdateUserDetails: Um Benutzerdetails zu aktualisieren, wie z. B. Namen, E-Mail-Adresse oder Kontoinformationen.
-
-        2. Erweiterte Kontostandsverwaltung
-
-            FreezeAccount: Zum Einfrieren eines Kontos bei verdächtigen Aktivitäten.
-            UnfreezeAccount: Um ein eingefrorenes Konto wieder zu aktivieren.
-            AdjustBalance: Manuelle Anpassung des Kontostands (z. B. für Admins).
-
-        3. Detaillierte Transaktionsverwaltung
-
-            GetTransactionHistory: Abfrage der vollständigen Transaktionshistorie eines Benutzers.
-            RefundTransaction: Rückerstattung einer Transaktion.
-            ValidateTransaction: Validierung einer Transaktion vor ihrer Ausführung.
-
-        4. Benachrichtigungen
-
-            SendUserNotification: Senden von spezifischen Benachrichtigungen an Benutzer.
-            GetPendingNotifications: Abrufen ausstehender Benachrichtigungen.
-
-        5. Währungsverwaltung
-
-            SetExchangeRate: Festlegen eines Wechselkurses für eine virtuelle Währung.
-            GetExchangeRate: Abruf des aktuellen Wechselkurses.
-            ConvertCurrency: Konvertierung einer Währungseinheit in eine andere.
-
-        6. Sicherheitsfunktionen
-
-            AuthenticateSession: Authentifizierung von Benutzer-Sessions, um unautorisierte Zugriffe zu verhindern.
-            InvalidateSession: Ungültigmachen von Sitzungen (z. B. nach Logout oder Timeout).
-            VerifyTransactionSignature: Überprüfung der Signatur einer Transaktion zur Sicherheitsgewährleistung.
-
-        7. System- und Debugging-Funktionen
-
-            Ping: Einfacher Test, um sicherzustellen, dass der Server erreichbar ist.
-            HealthCheck: Überprüfung des Serverstatus und der Systemressourcen.
-            LogTransactionDetails: Aufzeichnen detaillierter Transaktionsprotokolle für Debugging-Zwecke.
-
-        8. Land- und Immobilienmanagement
-
-            SellLand: Verfügbarmachen von Land für den Verkauf.
-            CancelLandSale: Abbrechen eines laufenden Landverkaufs.
-            GetLandDetails: Abrufen von Details zu einem Grundstück.
-
-        9. Erweiterte Zahlungsabwicklung
-
-            SchedulePayment: Planen von zukünftigen Zahlungen.
-            CancelScheduledPayment: Stornieren einer geplanten Zahlung.
-            SplitPayment: Aufteilen einer Zahlung auf mehrere Empfänger.
-
-        10. Reporting
-
-            GenerateAccountStatement: Erstellen eines Kontoauszugs für einen bestimmten Zeitraum.
-            GetSystemStatistics: Abrufen von Systemstatistiken, wie z. B. die Anzahl aktiver Benutzer oder die Summe durchgeführter Transaktionen.
-
-        Um die RegisterHandlers-Methode zu vervollständigen, sollten zusätzliche Funktionen hinzugefügt werden, 
-        die Benutzerverwaltung, erweiterte Zahlungsabwicklungen, Sicherheitsmaßnahmen und Reporting umfassen. 
-        Dies stellt sicher, dass das System robust, sicher und flexibel ist.
-        */
         /// <summary>Registers the handlers.</summary>
         public void RegisterHandlers()
         {
@@ -348,6 +296,8 @@ namespace OpenSim.Grid.MoneyServer
             m_httpServer.AddXmlRPCHandler("buyLandPrep", buyLandPrep);
 
             // Currency Buy Test
+            // getCurrencyQuote", quote_func
+            // buyCurrency", buy_func
             m_httpServer.AddXmlRPCHandler("getCurrencyQuote", getCurrencyQuote);
             m_httpServer.AddXmlRPCHandler("buyCurrency", buyCurrency);
 
@@ -357,10 +307,11 @@ namespace OpenSim.Grid.MoneyServer
             m_httpServer.AddXmlRPCHandler("UserAlert", UserAlertHandler);
 
             // Angebot oder eine Information zu einem Kaufpreis
-            m_httpServer.AddXmlRPCHandler("quote", quote);
+            // m_httpServer.AddXmlRPCHandler("quote", getCurrencyQuote);
         }
-
-        // ##################     Land Buy     ##################
+        #endregion
+        // ##################     Land Buy         ##################
+        #region Land Buy
 
         // Flexibilität: Die gesamte Logik wird innerhalb von LandtoolProcessPHP und ihren Hilfsfunktionen abgewickelt.
         // Fehlerbehandlung: Umfassende Überprüfung auf fehlende Daten oder Fehler während der Verarbeitung.
@@ -470,7 +421,7 @@ namespace OpenSim.Grid.MoneyServer
                 }
                 else
                 {
-                    m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Unknown method name: {0}", methodName);
+                    m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Unknown landtool method name: {0}", methodName);
                     httpResponse.StatusCode = 400;
                     httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
                 }
@@ -522,948 +473,6 @@ namespace OpenSim.Grid.MoneyServer
                 { "message", "Land purchase completed successfully" }
             };
         }
-
-
-        // ##################     Currency Buy     ##################
-        /*
-        private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
-        {
-            m_log.InfoFormat("[MONEY XMLRPC MODULE]: CURRENCY PROCESS PHP starting...");
-
-            try
-            {
-                // XML-String aus der Anfrage lesen
-                string requestBody;
-                using (StreamReader reader = new StreamReader(httpRequest.InputStream, Encoding.UTF8))
-                {
-                    requestBody = reader.ReadToEnd();
-                }
-
-                // XML-Daten parsen
-                XmlDocument doc = new XmlDocument();
-                doc.LoadXml(requestBody);
-
-                // Methode extrahieren
-                XmlNode methodNameNode = doc.SelectSingleNode("/methodCall/methodName");
-                if (methodNameNode == null)
-                {
-                    throw new Exception("Missing method name in XML-RPC request.");
-                }
-
-                string methodName = methodNameNode.InnerText;
-                XmlNodeList members = doc.SelectNodes("//param/value/struct/member");
-
-                // Variablen für Anfragedaten
-                string agentId = null, secureSessionId = null, language = null, viewerBuildVersion = null, viewerChannel = null;
-                int currencyBuy = 0, viewerMajorVersion = 0, viewerMinorVersion = 0, viewerPatchVersion = 0;
-
-                // Werte aus der XML-Struktur extrahieren
-                foreach (XmlNode member in members)
-                {
-                    string name = member.SelectSingleNode("name")?.InnerText;
-                    string value = member.SelectSingleNode("value")?.InnerText;
-
-                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(value)) continue;
-
-                    switch (name)
-                    {
-                        case "agentId": agentId = value; break;
-                        case "currencyBuy": currencyBuy = int.Parse(value); break;
-                        case "language": language = value; break;
-                        case "secureSessionId": secureSessionId = value; break;
-                        case "viewerBuildVersion": viewerBuildVersion = value; break;
-                        case "viewerChannel": viewerChannel = value; break;
-                        case "viewerMajorVersion": viewerMajorVersion = int.Parse(value); break;
-                        case "viewerMinorVersion": viewerMinorVersion = int.Parse(value); break;
-                        case "viewerPatchVersion": viewerPatchVersion = int.Parse(value); break;
-                    }
-                }
-
-                // Methode verarbeiten
-                if (methodName == "getCurrencyQuote")
-                {
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Currency Quote Request for AgentId: {0}", agentId);
-
-                    // Implementierung der getCurrencyQuote-Logik direkt in dieser Methode
-                    Hashtable responseValue = new Hashtable
-                    {
-                        { "success", true },
-                        { "agentId", agentId },
-                        { "currencyBuy", currencyBuy },
-                        { "language", language },
-                        { "quote", GenerateCurrencyQuote(currencyBuy) }, // Generiere ein Währungsangebot
-                        { "viewerBuildVersion", viewerBuildVersion },
-                        { "viewerChannel", viewerChannel },
-                        { "viewerMajorVersion", viewerMajorVersion },
-                        { "viewerMinorVersion", viewerMinorVersion },
-                        { "viewerPatchVersion", viewerPatchVersion }
-                    };
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: agentId ", agentId);
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: currencyBuy", currencyBuy);
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: language", language);
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: quote", GenerateCurrencyQuote(currencyBuy));
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerBuildVersion", viewerBuildVersion);
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerChannel", viewerChannel);
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerMajorVersion", viewerMajorVersion);
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerMinorVersion", viewerMinorVersion);
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: viewerPatchVersion", viewerPatchVersion);
-
-
-
-                    XmlRpcResponse quoteResponse = new XmlRpcResponse
-                    {
-                        Value = responseValue
-                    };
-
-                    // Erfolgreiche Antwort zurückgeben
-                    httpResponse.StatusCode = 200;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(quoteResponse.ToString());
-                }
-                else
-                {
-                    m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Unknown method name: {0}", methodName);
-                    httpResponse.StatusCode = 400;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
-                }
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Error processing CURRENCY request. Error: {0}", ex.ToString());
-                httpResponse.StatusCode = 500;
-                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
-            }
-        }
-
-        // Beispiel einer Funktion, um einen Währungswert zu generieren
-        private int GenerateCurrencyQuote(int currencyBuy)
-        {
-            // Logik, um den Währungswert zu berechnen
-            // Dies könnte durch eine externe API oder interne Berechnungen erfolgen
-            const double exchangeRate = 1.5; // Beispielkurs
-            return (int)(currencyBuy * exchangeRate);
-        }
-        */
-
-        // NEU 16. 11.2024 14:39
-
-        private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
-        {
-            m_log.InfoFormat("[MONEY XMLRPC MODULE]: CURRENCY PROCESS PHP starting...");
-
-            try
-            {
-                // XML-String aus Anfrage lesen
-                string requestBody;
-                using (StreamReader reader = new StreamReader(httpRequest.InputStream, Encoding.UTF8))
-                {
-                    requestBody = reader.ReadToEnd();
-                }
-
-                // XML-Daten parsen
-                XmlDocument doc = new XmlDocument();
-                doc.LoadXml(requestBody);
-
-                // Methode extrahieren
-                XmlNode methodNameNode = doc.SelectSingleNode("/methodCall/methodName");
-                if (methodNameNode == null)
-                {
-                    throw new Exception("Missing method name in XML-RPC request.");
-                }
-
-                string methodName = methodNameNode.InnerText;
-                XmlNodeList members = doc.SelectNodes("//param/value/struct/member");
-
-                // Variablen für Anfragedaten
-                string agentId = null, secureSessionId = null;
-                int currencyBuy = 0;
-
-                // Werte aus der XML-Struktur extrahieren
-                foreach (XmlNode member in members)
-                {
-                    string name = member.SelectSingleNode("name")?.InnerText;
-                    string value = member.SelectSingleNode("value")?.InnerText;
-
-                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(value)) continue;
-
-                    switch (name)
-                    {
-                        case "agentId": agentId = value; break;
-                        case "currencyBuy": currencyBuy = int.Parse(value); break;
-                        case "secureSessionId": secureSessionId = value; break;
-                    }
-                }
-
-                // Währungsangebot oder Kauf basierend auf der Methode verarbeiten
-                if (methodName == "getCurrencyQuote")
-                {
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Currency Quote for AgentId: {0}", agentId);
-
-                    Hashtable responseValue = GetCurrencyQuote(agentId, secureSessionId, currencyBuy);
-
-                    XmlRpcResponse quoteResponse = new XmlRpcResponse { Value = responseValue };
-
-                    // Erfolgreiche Antwort zurückgeben
-                    httpResponse.StatusCode = 200;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(quoteResponse.ToString());
-                }
-                else if (methodName == "buyCurrency")
-                {
-                    m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Buy Currency for AgentId: {0}", agentId);
-
-                    Hashtable responseValue = BuyCurrency(agentId, secureSessionId, currencyBuy);
-
-                    XmlRpcResponse buyResponse = new XmlRpcResponse { Value = responseValue };
-
-                    // Erfolgreiche Antwort zurückgeben
-                    httpResponse.StatusCode = 200;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(buyResponse.ToString());
-                }
-                else
-                {
-                    m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Unknown method name: {0}", methodName);
-                    httpResponse.StatusCode = 400;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
-                }
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XMLRPC MODULE]: Error processing CURRENCY request. Error: {0}", ex.ToString());
-                httpResponse.StatusCode = 500;
-                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
-            }
-        }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        private Hashtable GetCurrencyQuote(string agentId, string secureSessionId, int currencyBuy)
-        {
-            // Datenbankabfrage, um die Sitzung zu validieren (Dummy-Datenbank-Check)
-            bool sessionValid = ValidateSession(agentId, secureSessionId);
-
-            if (!sessionValid)
-            {
-                return new Hashtable
-                {
-                    { "success", false },
-                    { "errorMessage", "Unable to authenticate user. Click URL for more info." },
-                    { "errorURI", "https://example.com" } // Beispiel-URL
-                };
-            }
-
-            // Angebot generieren
-            int estimatedCost = ConvertToReal(currencyBuy);
-
-            Hashtable currencyData = new Hashtable
-            {
-                { "estimatedCost", estimatedCost },
-                { "currencyBuy", currencyBuy }
-            };
-
-            return new Hashtable
-            {
-                { "success", true },
-                { "currency", currencyData },
-                { "confirm", "1234567883789" } // Beispiel-Bestätigungscode
-            };
-        }
-
-
-
-
-        private object BuyCurrency(object request, IPEndPoint client = null)
-        {
-            // BankerAvatar Prüfung
-            if (string.IsNullOrEmpty(m_bankerAvatar) || m_bankerAvatar == "00000000-0000-0000-0000-00000000000")
-            {
-                // Fehlerantwort zurückgeben, wenn der BankerAvatar ungültig ist
-                Hashtable responseData = new Hashtable
-        {
-            { "success", false },
-            { "errorMessage", "Currency transactions are currently disabled or all avatars can buy." },
-            { "errorURI", "https://example.com" }
-        };
-                return responseData; // Für Hashtable-basierte Rückgabe
-            }
-
-            try
-            {
-                // Unterscheidung zwischen XML-RPC und Hashtable
-                if (request is XmlRpcRequest xmlRequest)
-                {
-                    // XML-RPC Request bearbeiten
-                    if (xmlRequest.Params.Count == 0)
-                    {
-                        m_log.Error("[MONEY XMLRPC]: buyCurrency: No parameters in request.");
-                        return new XmlRpcResponse();
-                    }
-
-                    Hashtable requestData = (Hashtable)xmlRequest.Params[0];
-                    string currencyAmount = (string)requestData["currencyAmount"];
-                    int amount = int.Parse(currencyAmount);
-
-                    int cost = CalculateCost(amount);
-                    m_log.InfoFormat("[MONEY XMLRPC]: buyCurrency: Cost for {0} currency units: {1}", amount, cost);
-
-                    // Transaktion durchführen (DB-Operation)
-                    bool transactionSuccess = m_moneyDBService.BuyCurrency(amount, cost, m_bankerAvatar);
-
-                    XmlRpcResponse xmlResponse = new XmlRpcResponse();
-                    Hashtable responseData = new Hashtable();
-                    responseData.Add("success", transactionSuccess);
-                    if (!transactionSuccess)
-                    {
-                        responseData.Add("errorMessage", "Transaction failed. Please try again later.");
-                    }
-                    xmlResponse.Value = responseData;
-                    return xmlResponse; // Rückgabe für XML-RPC
-
-                }
-                else if (request is Hashtable requestData)
-                {
-                    // Hashtable Request bearbeiten
-                    string agentId = (string)requestData["agentId"];
-                    string secureSessionId = (string)requestData["secureSessionId"];
-                    int currencyBuy = (int)requestData["currencyBuy"];
-
-                    // Sitzung validieren
-                    bool sessionValid = ValidateSession(agentId, secureSessionId);
-                    if (!sessionValid)
-                    {
-                        return new Hashtable
-                        {
-                            { "success", false },
-                            { "errorMessage", "Unable to authenticate user. Click URL for more info." },
-                            { "errorURI", "https://example.com" }
-                        };
-                    }
-
-                    // Kosten berechnen
-                    int cost = ConvertToReal(currencyBuy);
-
-                    // Minimaler Kaufbetrag
-                    const int minimumReal = 10;
-                    if (cost < minimumReal)
-                    {
-                        return new Hashtable
-                        {
-                            { "success", false },
-                            { "errorMessage", $"Minimum purchase amount is {minimumReal}." },
-                            { "errorURI", "https://example.com" }
-                        };
-                    }
-
-                    // Transaktion verarbeiten
-                    bool transactionSuccess = ProcessTransaction(agentId, cost, m_bankerAvatar);
-
-                    if (!transactionSuccess)
-                    {
-                        return new Hashtable
-                        {
-                            { "success", false },
-                            { "errorMessage", "Transaction failed. Please try again later." }
-                        };
-                    }
-
-                    // Erfolgreich Währung übertragen
-                    MoveMoney(m_bankerAvatar, agentId, currencyBuy, "Currency purchase");
-
-                    return new Hashtable
-                    {
-                        { "success", true }
-                    };
-                }
-                else
-                {
-                    m_log.Error("[MONEY]: Invalid request type.");
-                    return new Hashtable
-                    {
-                        { "success", false },
-                        { "errorMessage", "Invalid request format." }
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY]: Exception occurred in BuyCurrency: {0}", ex.Message);
-                return new Hashtable
-                {
-                    { "success", false },
-                    { "errorMessage", "An error occurred during the transaction." }
-                };
-            }
-        }
-
-        private void MoveMoney(string m_bankerAvatar, string agentId, int currencyBuy, string v)
-        {
-            throw new NotImplementedException();
-        }
-
-
-
-        // BuyCurrency 1 BuyCurrency(string agentId, string secureSessionId, int currencyBuy)
-
-        // , m_bankerAvatar
-
-
-        private Hashtable BuyCurrency(string agentId, string secureSessionId, int currencyBuy)
-        { //002
-            // Datenbankabfrage, um die Sitzung zu validieren (Dummy-Datenbank-Check)
-            bool sessionValid = ValidateSession(agentId, secureSessionId);
-
-            if (!sessionValid)
-            {
-                return new Hashtable
-                {
-                    { "success", false },
-                    { "errorMessage", "Unable to authenticate user. Click URL for more info." },
-                    { "errorURI", "https://example.com" } // Beispiel-URL
-                };
-            }
-
-            // Berechnung der Kosten
-            int cost = ConvertToReal(currencyBuy);
-
-            // Minimaler Kaufbetrag (Beispiel)
-            const int minimumReal = 10;
-            if (cost < minimumReal)
-            {
-                return new Hashtable
-                {
-                    { "success", false },
-                    { "errorMessage", $"Minimum purchase amount is {minimumReal}." },
-                    { "errorURI", "https://example.com" }
-                };
-            }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            // Transaktion verarbeiten (Dummy-Prozess)
-            bool transactionSuccessful = ProcessTransaction(agentId, cost);
-
-            if (!transactionSuccessful)
-            {
-                return new Hashtable
-                {
-                    { "success", false },
-                    { "errorMessage", "Transaction failed. Gateway denied your charge." },
-                    { "errorURI", "https://example.com" }
-                };
-            }
-
-            // Erfolgreiche Antwort
-            return new Hashtable
-            {
-                { "success", true }
-            };
-        }
-
-        private bool ProcessTransaction(string agentId, int cost)
-        {
-            throw new NotImplementedException();
-        }
-
-        /*
-        Dummy-Funktionen
-        ValidateSession: Simuliert die Sitzungvalidierung.
-        ConvertToReal: Konvertiert die virtuelle Währung in reale Kosten.
-        ProcessTransaction: Simuliert eine Zahlungsabwicklung.
-        */
-
-        private bool ValidateSession(string agentId, string secureSessionId)
-        {
-            // Beispielhafte Validierung (immer erfolgreich für Testzwecke)
-            return !string.IsNullOrEmpty(agentId) && !string.IsNullOrEmpty(secureSessionId);
-        }
-
-        private int ConvertToReal(int currencyBuy)
-        {
-            const double exchangeRate = 1.5; // Beispielkurs
-            return (int)(currencyBuy * exchangeRate);
-        }
-
-        private bool ProcessTransaction(string agentId, int cost, string m_bankerAvatar)
-        {
-            // Simuliert eine erfolgreiche Transaktion
-            m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processed transaction for AgentId: {0}, Cost: {1}", agentId, cost);
-            return true;
-        }
-
-
-
-
-        // ##################     XMLRPC Pasing     ##################
-
-
-        /*
-        OSParseXmlRpcRequest
-
-        Dient zum Parsen und Verarbeiten des XML-RPC-Anfrageinhalts. 
-        Basierend auf der Methode im XML-Dokument wird ein entsprechendes Objekt (z. B. CurrencyQuoteRequest oder LandPurchaseRequest) erstellt.
-
-            Wichtige Schritte:
-                Analysiert die methodCall-Struktur der XML-Daten.
-                Verarbeitet verschiedene Methoden wie getCurrencyQuote oder preflightBuyLandPrep.
-                Gibt ein stark typisiertes Objekt zurück, das die spezifischen Anfragedaten enthält.
-        */
-        // Methode zur Verarbeitung und Parsing der XML-RPC-Anfrage
-        private object ParseXmlRpcRequest(string xml)
-        {
-            XmlDocument doc = new XmlDocument();
-            doc.LoadXml(xml);
-
-            XmlNode methodCallNode = doc.SelectSingleNode("/methodCall");
-            XmlNode methodNameNode = methodCallNode.SelectSingleNode("methodName");
-
-            if (methodNameNode == null)
-                throw new Exception("Missing method name");
-
-            string methodName = methodNameNode.InnerText;
-            XmlNodeList members = methodCallNode.SelectNodes("//param/value/struct/member");
-
-            if (methodName == "getCurrencyQuote")
-            {
-                CurrencyQuoteRequest request = new CurrencyQuoteRequest();
-                foreach (XmlNode member in members)
-                {
-                    string name = member.SelectSingleNode("name").InnerText;
-                    string value = member.SelectSingleNode("value").InnerText;
-
-                    switch (name)
-                    {
-                        case "agentId": request.AgentId = value; break;
-                        case "currencyBuy": request.CurrencyBuy = int.Parse(value); break;
-                        case "language": request.Language = value; break;
-                        case "secureSessionId": request.SecureSessionId = value; break;
-                        case "viewerBuildVersion": request.ViewerBuildVersion = value; break;
-                        case "viewerChannel": request.ViewerChannel = value; break;
-                        case "viewerMajorVersion": request.ViewerMajorVersion = int.Parse(value); break;
-                        case "viewerMinorVersion": request.ViewerMinorVersion = int.Parse(value); break;
-                        case "viewerPatchVersion": request.ViewerPatchVersion = int.Parse(value); break;
-                    }
-                }
-                m_log.InfoFormat("[MONEY XML RPC MODULE]: Processed Currency Quote Request for AgentId: {0}", request.AgentId);
-                return request;
-                
-            }
-            else if (methodName == "preflightBuyLandPrep")
-            {
-                LandPurchaseRequest request = new LandPurchaseRequest();
-                foreach (XmlNode member in members)
-                {
-                    string name = member.SelectSingleNode("name").InnerText;
-                    string value = member.SelectSingleNode("value").InnerText;
-
-                    switch (name)
-                    {
-                        case "agentId": request.AgentId = value; break;
-                        case "billableArea": request.BillableArea = int.Parse(value); break;
-                        case "currencyBuy": request.CurrencyBuy = int.Parse(value); break;
-                        case "language": request.Language = value; break;
-                        case "secureSessionId": request.SecureSessionId = value; break;
-                    }
-                }
-                m_log.InfoFormat("[MONEY XML RPC MODULE]: Processed Land Purchase Request for AgentId: {0}, BillableArea: {1}", request.AgentId, request.BillableArea);
-                return request;
-            }
-            m_log.ErrorFormat("[MONEY XML RPC MODULE]: Unknown method name: {0}", methodName);
-            throw new Exception("Unknown method name: " + methodName);
-        }
-
-        /*
-        LogXmlRpcRequestFile und LogXmlRpcRequestConsole
-        Schreiben Debug-Informationen zu XML-RPC-Anfragen entweder in eine Datei oder in die Konsole. Diese Funktionen helfen, Probleme zu diagnostizieren.
-            Beispiel:
-        string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xmlrpc_debug.log");
-        File.AppendAllText(logFilePath, logEntry);
-        */
-        private void LogXmlRpcRequestFile(IOSHttpRequest request)
-        {
-            try
-            {
-                // Erstelle einen Dateipfad für das Log
-                string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xmlrpc_debug.log");
-
-                // Lies den Request-Body
-                string requestBody;
-                using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
-                {
-                    requestBody = reader.ReadToEnd();
-                }
-
-                // Bereite den Logeintrag vor
-                string logEntry = $"{DateTime.UtcNow}: {request.RawUrl}\n{requestBody}\n\n";
-
-                // Schreibe den Logeintrag in die Datei
-                File.AppendAllText(logFilePath, logEntry);
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XML RPC MODULE DEBUG]: Error logging XML-RPC request: {0}", ex.Message);
-            }
-        }
-
-        /*
-        LogXmlRpcRequestFile und LogXmlRpcRequestConsole
-        Schreiben Debug-Informationen zu XML-RPC-Anfragen entweder in eine Datei oder in die Konsole. Diese Funktionen helfen, Probleme zu diagnostizieren.
-            Beispiel:
-        string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xmlrpc_debug.log");
-        File.AppendAllText(logFilePath, logEntry);
-        */
-        private void LogXmlRpcRequestConsole(IOSHttpRequest request)
-        {
-            m_log.InfoFormat("[MONEY XML RPC MODULE]: {0}", new StreamReader(request.InputStream).ReadToEnd());  // TODO: test
-
-            try
-            {
-                // Lies den Request-Body
-                string requestBody;
-                using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
-                {
-                    requestBody = reader.ReadToEnd();
-                }
-
-                // Bereite den Logeintrag vor
-                string logEntry = $"{DateTime.UtcNow}: {request.RawUrl}\n{requestBody}\n\n";
-
-                // Schreibe den Logeintrag in das Log
-                m_log.Info(logEntry);
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XML RPC MODULE DEBUG]: Error logging XML-RPC request: {0}", ex.Message);
-            }
-        }
-
-        /*
-        CalculateCost
-        Berechnet die Kosten basierend auf einer Währungsmenge.
-            Beispiel:
-
-        return currencyAmount * m_CalculateCurrency;
-        */
-        /// <summary>
-        /// Calculates the cost based on the given currency amount.
-        /// </summary>
-        /// <param name="currencyAmount">The amount of currency.</param>
-        /// <returns>The calculated cost.</returns>
-        private int CalculateCost(int currencyAmount)
-        {
-            m_log.InfoFormat("[MONEY XML RPC MODULE]: Cost for {0} currency units: {1}", currencyAmount, currencyAmount * m_CalculateCurrency);
-            // The cost of each currency unit is calculated by multiplying the currency amount by the calculate currency value.
-            // The calculate currency value is a private field of the class.
-            // The commented line is an example of how the price per unit can be set.
-            return currencyAmount * m_CalculateCurrency;
-            
-            //return 0;
-        }
-
-        /*
-        Spezifische Handler (z. B. OnMoneyTransferedHandler, BalanceUpdateHandler, UserAlertHandler)
-        Diese Funktionen verarbeiten bestimmte Anfragen:
-
-            OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
-            BalanceUpdateHandler: Verarbeitet Updates zum Kontostand.
-            UserAlertHandler: Handhabt Benutzerbenachrichtigungen.
-        */
-        public XmlRpcResponse OnMoneyTransferedHandler(XmlRpcRequest request, IPEndPoint client)
-        {
-            if (request == null)
-            {
-                m_log.Error("[MONEY XMLRPC]: OnMoneyTransferedHandler: request is null.");
-                return new XmlRpcResponse();
-            }
-
-            if (client == null)
-            {
-                m_log.Error("[MONEY XMLRPC]: OnMoneyTransferedHandler: client is null.");
-                return new XmlRpcResponse();
-            }
-
-            try
-            {
-                Hashtable requestData = (Hashtable)request.Params[0];
-                string transactionID = (string)requestData["transactionID"];
-                UUID transactionUUID = UUID.Zero;
-                UUID.TryParse(transactionID, out transactionUUID);
-
-                TransactionData transaction = m_moneyDBService.FetchTransaction(transactionUUID);
-                UserInfo user = m_moneyDBService.FetchUserInfo(transaction.Sender);
-
-                m_log.InfoFormat("[MONEY XMLRPC]: OnMoneyTransferedHandler: Transaction {0} from user {1} to user {2} for {3} units",
-                    transactionID, user.Avatar, transaction.Receiver, transaction.Amount);
-
-                XmlRpcResponse response = new XmlRpcResponse();
-                Hashtable responseData = new Hashtable();
-                responseData.Add("success", true);
-                response.Value = responseData;
-                return response;
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XMLRPC]: OnMoneyTransferedHandler: Exception occurred: {0}", ex.Message);
-                return new XmlRpcResponse();
-            }
-        }
-
-        /*
-        Spezifische Handler (z. B. OnMoneyTransferedHandler, BalanceUpdateHandler, UserAlertHandler)
-        Diese Funktionen verarbeiten bestimmte Anfragen:
-
-            OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
-            BalanceUpdateHandler: Verarbeitet Updates zum Kontostand.
-            UserAlertHandler: Handhabt Benutzerbenachrichtigungen.
-        */
-        public XmlRpcResponse BalanceUpdateHandler(XmlRpcRequest request, IPEndPoint client)
-        {
-            if (request == null)
-            {
-                m_log.Error("[MONEY XMLRPC]: BalanceUpdateHandler: request is null.");
-                return new XmlRpcResponse();
-            }
-
-            if (client == null)
-            {
-                m_log.Error("[MONEY XMLRPC]: BalanceUpdateHandler: client is null.");
-                return new XmlRpcResponse();
-            }
-
-            try
-            {
-                Hashtable requestData = (Hashtable)request.Params[0];
-                string balanceUpdateData = (string)requestData["balanceUpdateData"];
-
-                // Process the balance update data
-                m_log.InfoFormat("[MONEY XMLRPC]: BalanceUpdateHandler: Updating balance for user {0}", balanceUpdateData);
-
-                XmlRpcResponse response = new XmlRpcResponse();
-                Hashtable responseData = new Hashtable();
-                responseData.Add("success", true);
-                response.Value = responseData;
-                return response;
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XMLRPC]: BalanceUpdateHandler: Exception occurred: {0}", ex.Message);
-                return new XmlRpcResponse();
-            }
-        }
-
-        /*
-        Spezifische Handler (z. B. OnMoneyTransferedHandler, BalanceUpdateHandler, UserAlertHandler)
-        Diese Funktionen verarbeiten bestimmte Anfragen:
-
-            OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
-            BalanceUpdateHandler: Verarbeitet Updates zum Kontostand.
-            UserAlertHandler: Handhabt Benutzerbenachrichtigungen.
-        */
-        public XmlRpcResponse UserAlertHandler(XmlRpcRequest request, IPEndPoint client)
-        {
-            try
-            {
-                Hashtable requestData = (Hashtable)request.Params[0];
-                string alertMessage = (string)requestData["alertMessage"];
-
-                // Process the alert message
-                m_log.InfoFormat("[MONEY XMLRPC]: UserAlertHandler: Alert message received: {0}", alertMessage);
-
-                XmlRpcResponse response = new XmlRpcResponse();
-                Hashtable responseData = new Hashtable();
-                responseData.Add("success", true);
-                response.Value = responseData;
-                return response;
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XMLRPC]: UserAlertHandler: Exception occurred: {0}", ex.Message);
-                return new XmlRpcResponse();
-            }
-        }
-
-        /**/
-        private XmlRpcResponse getCurrencyQuote(XmlRpcRequest request, IPEndPoint client)
-        {
-            // Log the request for auditing purposes
-            m_log.InfoFormat("[MONEY XMLRPC]: handleClient getCurrencyQuote.");
-
-            // Create a response object to store the quote details
-            Hashtable quoteResponse = new Hashtable();
-
-            // Set the success flag to true
-            quoteResponse.Add("success", true);
-
-            // Add a placeholder for currency details (to be implemented)
-            quoteResponse.Add("currency", new Hashtable()); // TODO: Add currency details here
-
-            // Add a confirmation code (to be implemented)
-            quoteResponse.Add("confirm", "asdfad9fj39ma9fj"); // TODO: Generate a unique confirmation code
-
-            // Create an XML-RPC response object
-            XmlRpcResponse returnval = new XmlRpcResponse();
-
-            // Set the response value to the quote response object
-            returnval.Value = quoteResponse;
-
-            // Return the response to the client
-            return returnval;
-        }
-
-        /*
-        buyCurrency(XmlRpcRequest request, IPEndPoint client)
-        Zweck: Verarbeitet eine Anfrage zum Kauf von virtueller Währung.
-        Details:
-            Liest die angeforderte Währungsmenge aus der Anfrage.
-            Berechnet die Kosten (vermutlich mit einer Funktion CalculateCost).
-            Führt eine Kaufoperation in einer Datenbank durch (m_moneyDBService.BuyCurrency).
-            Gibt eine Erfolgsantwort zurück.
-        Anwendung: Diese Funktion wird aufgerufen, wenn ein Benutzer virtuelle Währung erwerben möchte.
-        */
-
-        // BuyCurrency 1 BuyCurrency(string agentId, string secureSessionId, int currencyBuy)
-        // BuyCurrency 2 buyCurrency(XmlRpcRequest request, IPEndPoint client)
-
-        private XmlRpcResponse buyCurrency(XmlRpcRequest request, IPEndPoint client)
-        { //002
-            if (request == null)
-            {
-                m_log.Error("[MONEY XMLRPC]: buyCurrency: request is null.");
-                return new XmlRpcResponse();
-            }
-
-            if (client == null)
-            {
-                m_log.Error("[MONEY XMLRPC]: buyCurrency: client is null.");
-                return new XmlRpcResponse();
-            }
-
-            try
-            {
-                Hashtable requestData = (Hashtable)request.Params[0];
-                string currencyAmount = (string)requestData["currencyAmount"];
-                int amount = int.Parse(currencyAmount);
-
-                int cost = CalculateCost(amount);
-                m_log.InfoFormat("[MONEY XMLRPC]: buyCurrency: Cost for {0} currency units: {1}", amount, cost);
-
-                // Assuming m_moneyDBService is an instance of a class that handles database operations
-                m_moneyDBService.BuyCurrency(amount, cost);
-
-                XmlRpcResponse response = new XmlRpcResponse();
-                Hashtable responseData = new Hashtable();
-                responseData.Add("success", true);
-                response.Value = responseData;
-                return response;
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XMLRPC]: buyCurrency: Exception occurred: {0}", ex.Message);
-                return new XmlRpcResponse();
-            }
-        }
-
-        /*
-        buy_func(XmlRpcRequest request, IPEndPoint client)
-        Zweck: Handhabt den Kaufvorgang.
-        Details:
-            Eine sehr einfache Funktion, die lediglich eine Erfolgsmeldung zurückgibt.
-            Wird vermutlich für grundlegende Tests oder als Platzhalter verwendet.
-        Anwendung: Einsatz für grundlegende Kaufoperationen oder Tests.
-        */
-        /// <summary>Handles the buy function.</summary>
-        /// <param name="request">The XML-RPC request.</param>
-        /// <param name="client">The client endpoint.</param>
-        /// <returns>An XML-RPC response indicating success.</returns>
-        private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint client)
-        {
-            // Log the XML-RPC request
-            m_log.InfoFormat("[MONEY XMLRPC]: handleClient buyCurrency.");
-
-            // Create the XML-RPC response
-            XmlRpcResponse returnval = new XmlRpcResponse();
-            Hashtable returnresp = new Hashtable();
-            returnresp.Add("success", true);
-            returnval.Value = returnresp;
-
-            // Return the XML-RPC response
-            return returnval;
-        }
-
-        /*
-        quote(XmlRpcRequest request, IPEndPoint client)
-        Zweck: Bietet ein Angebot oder eine Information zu einem Kaufpreis.
-        Details:
-            Liefert eine Erfolgsantwort mit Platzhaltern für Währungsdetails und eine Bestätigung.
-            TODO-Kommentare deuten darauf hin, dass die Details und der Bestätigungscode noch implementiert werden müssen.
-        Anwendung: Bereitstellung von Informationen zu Währungskursen oder Transaktionen.
-        */
-        /// <summary> Handles the get currency quote request.</summary>
-        /// <param name="request">The incoming XML-RPC request.</param>
-        /// <param name="client">The client that made the request.</param>
-        /// <returns>An XML-RPC response with the currency quote.</returns>
-        private XmlRpcResponse quote(XmlRpcRequest request, IPEndPoint client)
-        {
-            // Log the request for auditing purposes
-            m_log.InfoFormat("[MONEY XMLRPC]: handleClient getCurrencyQuote.");
-
-            // Create a response object to store the quote details
-            Hashtable quoteResponse = new Hashtable();
-
-            // Set the success flag to true
-            quoteResponse.Add("success", true);
-
-            // Add a placeholder for currency details (to be implemented)
-            quoteResponse.Add("currency", new Hashtable()); // TODO: Add currency details here
-
-            // Add a confirmation code (to be implemented)
-            quoteResponse.Add("confirm", "asdfad9fj39ma9fj"); // TODO: Generate a unique confirmation code
-
-            // Create an XML-RPC response object
-            XmlRpcResponse returnval = new XmlRpcResponse();
-
-            // Set the response value to the quote response object
-            returnval.Value = quoteResponse;
-
-            // Return the response to the client
-            return returnval;
-        }
-
-
-
-
-
-
-        // Neu II 15.11.2024
-
-
-
-
-
-
         private XmlRpcResponse preflightBuyLandPrep(XmlRpcRequest request, IPEndPoint client)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: preflightBuyLandPrep starting...");
@@ -1519,7 +528,6 @@ namespace OpenSim.Grid.MoneyServer
                 return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
             }
         }
-
         private XmlRpcResponse buyLandPrep(XmlRpcRequest request, IPEndPoint client)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: buyLandPrep starting...");
@@ -1591,134 +599,690 @@ namespace OpenSim.Grid.MoneyServer
             m_log.WarnFormat("[MONEY XMLRPC]: ProcessLandPurchase: Purchase failed for Agent {0}.", agentId);
             return false;
         }
+        #endregion
+        // ##################     Currency Buy     ##################
+        #region Currency Buy
 
-
-
-
-
-
-
-        // Neu II 15.11.2024 Ende
-
-        /*
-        buyLandPrep(XmlRpcRequest request, IPEndPoint client)
-        Zweck: Handhabt den Kauf von virtuellem Land.
-        Details:
-            Überprüft die Anfrage und den Client.
-            Gibt standardmäßig eine Erfolgsantwort zurück.
-            Kann erweitert werden, um den Kaufvorgang tatsächlich zu verarbeiten.
-        Anwendung: Wird verwendet, um Landkäufe zu ermöglichen oder zu validieren.
-        */
-        /// <summary>Lands the buy function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="client">The client.</param>
-        /*
-        private XmlRpcResponse buyLandPrep(XmlRpcRequest request, IPEndPoint client)
+        private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
-            if (request == null)
-            {
-                m_log.Error("[MONEY XMLRPC]: buyLandPrep: request is null.");
-                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
-            }
+            m_log.InfoFormat("[CURRENCY PROCESS PHP]: Starting...");
 
-            if (client == null)
+            if (httpRequest == null || httpResponse == null)
             {
-                m_log.Error("[MONEY XMLRPC]: buyLandPrep: client is null.");
-                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                m_log.Error("[CURRENCY PROCESS PHP]: Invalid request or response object.");
+                httpResponse.StatusCode = 400;
+                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid request</response>");
+                return;
             }
 
             try
             {
-                m_log.InfoFormat("[MONEY XMLRPC]: handleClient buyLandPrep.");
-                XmlRpcResponse returnval = new XmlRpcResponse();
-                Hashtable returnresp = new Hashtable();
-                returnresp.Add("success", true);
-                returnval.Value = returnresp;
-                return returnval;
+                // Request Body auslesen
+                string requestBody;
+                using (var reader = new StreamReader(httpRequest.InputStream, Encoding.UTF8))
+                {
+                    requestBody = reader.ReadToEnd();
+                }
+
+                // XML-Daten parsen
+                XmlDocument doc = new XmlDocument();
+                doc.LoadXml(requestBody);
+
+                // Methode extrahieren
+                XmlNode methodNameNode = doc.SelectSingleNode("/methodCall/methodName");
+                if (methodNameNode == null)
+                {
+                    throw new Exception("Missing method name in XML-RPC request.");
+                }
+
+                string methodName = methodNameNode.InnerText;
+
+                // Parameter extrahieren
+                Hashtable parameters = ExtractXmlRpcParams(doc);
+
+                string agentId = parameters["agentId"]?.ToString();
+                string secureSessionId = parameters["secureSessionId"]?.ToString();
+                int currencyBuy = int.Parse(parameters["currencyBuy"]?.ToString() ?? "0");
+
+                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - AgentId: {0}, CurrencyBuy: {1}, SecureSessionId: {2}", agentId, currencyBuy, secureSessionId);
+
+                if (methodName == "getCurrencyQuote")
+                {
+                    // Währungsangebot abrufen
+                    Hashtable quoteResponse = PerformGetCurrencyQuote(agentId, currencyBuy, secureSessionId);
+                    XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = quoteResponse };
+                    httpResponse.StatusCode = 200;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
+                }
+                else if (methodName == "buyCurrency")
+                {
+                    // Währungskauf durchführen
+                    Hashtable purchaseResponse = PerformBuyCurrency(agentId, currencyBuy, secureSessionId);
+
+                    if ((bool)purchaseResponse["success"])
+                    {
+                        m_log.Info("[CURRENCY PROCESS PHP]: Purchase successful. Proceeding to credit currency.");
+                        // Gutschrift durchführen
+                        bool transferSuccess = PerformMoneyTransfer("BANKER", agentId, currencyBuy);
+
+                        if (transferSuccess)
+                        {
+                            m_log.Info("[CURRENCY PROCESS PHP]: Currency credited successfully.");
+                            XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = purchaseResponse };
+                            httpResponse.StatusCode = 200;
+                            httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
+                        }
+                        else
+                        {
+                            m_log.Error("[CURRENCY PROCESS PHP]: Currency crediting failed.");
+                            Hashtable fallbackResponse = ApplyFallbackCredit(agentId);
+                            XmlRpcResponse fallbackXmlResponse = new XmlRpcResponse { Value = fallbackResponse };
+                            httpResponse.StatusCode = 200;
+                            httpResponse.RawBuffer = Encoding.UTF8.GetBytes(fallbackXmlResponse.ToString());
+                        }
+                    }
+                    else
+                    {
+                        m_log.Error("[CURRENCY PROCESS PHP]: Currency purchase failed.");
+                        httpResponse.StatusCode = 400;
+                        httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Currency purchase failed</response>");
+                    }
+                }
+                else
+                {
+                    m_log.ErrorFormat("[CURRENCY PROCESS PHP]: Unknown method name: {0}", methodName);
+                    httpResponse.StatusCode = 400;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
+                }
             }
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY XMLRPC]: buyLandPrep: {0}", ex.Message);
-                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                m_log.ErrorFormat("[CURRENCY PROCESS PHP]: Error processing request. Error: {0}", ex.ToString());
+                httpResponse.StatusCode = 500;
+                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
         }
-        */
-
-        /*
-        preflightBuyLandPrep(XmlRpcRequest request, IPEndPoint client)
-        Zweck: Führt Vorabprüfungen für Landkäufe durch.
-        Details:
-            Ähnlich wie landBuy, prüft diese Funktion die Gültigkeit von Anfrage und Client.
-            Kann für Sicherheitsprüfungen oder Vorbereitungsvorgänge verwendet werden.
-        Anwendung: Vorbereitung vor der Ausführung eines Landkaufs.
-        */
-        /// <summary>Preflights the buy land prep function.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="client">The client.</param>
-        /*
-        private XmlRpcResponse preflightBuyLandPrep(XmlRpcRequest request, IPEndPoint client)
+        private Hashtable ExtractXmlRpcParams(XmlDocument doc)
         {
-            if (request == null)
+            Hashtable parameters = new Hashtable();
+            XmlNodeList members = doc.SelectNodes("//param/value/struct/member");
+
+            foreach (XmlNode member in members)
             {
-                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep: request is null.");
-                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                string name = member.SelectSingleNode("name")?.InnerText;
+                string value = member.SelectSingleNode("value")?.InnerText;
+
+                if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(value))
+                {
+                    parameters[name] = value;
+                }
+            }
+            return parameters;
+        }
+
+        private Hashtable PerformGetCurrencyQuote(string agentId, int currencyBuy, string secureSessionId)
+        {
+            m_log.InfoFormat("[PERFORM GET CURRENCY QUOTE]: Generating currency quote for AgentId: {0}", agentId);
+
+            int rate = 100; // 1€ = 100L$
+            return new Hashtable
+            {
+                { "success", true },
+                { "currency", new Hashtable
+                    {
+                        { "estimatedCost", currencyBuy / rate }, // Kosten in €
+                        { "currencyBuy", currencyBuy }          // Angeforderte Spielwährung
+                    }
+                },
+                { "confirm", Guid.NewGuid().ToString() }
+            };
+        }
+
+        private Hashtable PerformBuyCurrency(string agentId, int currencyBuy, string secureSessionId)
+        {
+            if (string.IsNullOrEmpty(agentId))
+            {
+                m_log.Error("[PERFORM BUY CURRENCY]: AgentId is null or empty.");
+                return new Hashtable
+                {
+                    { "success", false },
+                    { "message", "AgentId is required." }
+                };
             }
 
-            if (client == null)
+            if (currencyBuy <= 0)
             {
-                m_log.Error("[MONEY XMLRPC]: preflightBuyLandPrep: client is null.");
-                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                m_log.Error("[PERFORM BUY CURRENCY]: Invalid currencyBuy amount.");
+                return new Hashtable
+                {
+                    { "success", false },
+                    { "message", "Invalid currencyBuy amount." }
+                };
             }
+
+            m_log.InfoFormat("[PERFORM BUY CURRENCY]: Processing currency purchase for AgentId: {0}, Amount: {1}", agentId, currencyBuy);
+            return new Hashtable
+            {
+                { "success", true },
+                { "message", $"Successfully purchased {currencyBuy}L$ for {agentId}" }
+            };
+        }
+        public XmlRpcResponse getCurrencyQuote(XmlRpcRequest request, IPEndPoint remoteClient)
+        {
+            int amount = 0;
+
+            // Protokolliere die eingehende XML-Anfrage
+            m_log.InfoFormat("[GET CURRENCY QUOTE]: Incoming XML Request: {0}", ToXmlString((Hashtable)request.Params[0]));
 
             try
             {
-                m_log.InfoFormat("[MONEY XMLRPC]: handleClient preflightBuyLandPrep.");
-                XmlRpcResponse returnval = new XmlRpcResponse();
-                Hashtable returnresp = new Hashtable();
-                returnresp.Add("success", true);
-                returnval.Value = returnresp;
-                return returnval;
+                Hashtable requestData = (Hashtable)request.Params[0];
+                amount = (int)requestData["currencyBuy"];
             }
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[MONEY XMLRPC]: preflightBuyLandPrep: {0}", ex.Message);
-                return new XmlRpcResponse { Value = new Hashtable { { "success", false } } };
+                m_log.ErrorFormat("[GET CURRENCY QUOTE]: Error parsing request: {0}", ex.Message);
             }
-        }
-        */
 
-        /*
-        GetSSLCommonName(XmlRpcRequest request) und GetSSLCommonName()
-        Zweck: Extrahiert den SSL Common Name aus einer Anfrage oder gibt den gespeicherten Wert zurück.
-        Details:
-            Verwendet, um Client-Zertifikate zu validieren.
-            Sicherstellt, dass nur autorisierte Clients zugreifen können.
-        Anwendung: Wichtiger Bestandteil der Sicherheitsüberprüfung im System.
-        */
-        /// <summary>Gets the name of the SSL common.</summary>
-        /// <param name="request">The request.</param>
-        public string GetSSLCommonName(XmlRpcRequest request)
+            // Berechnung und Antwortvorbereitung
+            Hashtable currencyResponse = new Hashtable
+            {
+                { "estimatedCost", amount * 0.01 }, // Beispielberechnung für Kosten
+                { "currencyBuy", amount }
+            };
+
+            Hashtable quoteResponse = new Hashtable
+            {
+                { "success", true },
+                { "currency", currencyResponse },
+                { "confirm", Guid.NewGuid().ToString() }
+            };
+
+            // Protokolliere die Antwort, bevor sie zurückgegeben wird
+            m_log.InfoFormat("[GET CURRENCY QUOTE]: XML Response: {0}", ToXmlString(quoteResponse));
+
+            // Erstelle die Antwort
+            XmlRpcResponse returnval = new XmlRpcResponse { Value = quoteResponse };
+
+            // Füge ein weiteres Log hinzu, um sicherzustellen, dass die Antwort korrekt erstellt wurde
+            m_log.InfoFormat("[GET CURRENCY QUOTE]: Returning response for getCurrencyQuote: {0}", ToXmlString((Hashtable)returnval.Value));
+
+            return returnval;
+        }
+        public XmlRpcResponse buyCurrency(XmlRpcRequest request, IPEndPoint remoteClient)
         {
-            if (request.Params.Count > 5)
+            Hashtable requestData = (Hashtable)request.Params[0];
+            string agentId = requestData["agentId"]?.ToString();
+            int amount = (int)requestData["currencyBuy"];
+
+            // Protokolliere die eingehende XML-Anfrage
+            m_log.InfoFormat("[BUY CURRENCY]: Incoming XML Request: {0}", ToXmlString((Hashtable)request.Params[0]));
+
+            // Verarbeite den Kauf und logge die Details
+            m_log.InfoFormat("[BUY CURRENCY]: Processing currency purchase for AgentId: {0}, Amount: {1}, Banker: {2}", agentId, amount, m_bankerAvatar);
+
+            // Hier erfolgt der Transfer an den Money Banker (BankerAvatar als Sender)
+            string senderID = m_bankerAvatar;  // Der Sender ist der BankerAvatar
+            string receiverID = agentId;       // Der Empfänger ist der Agent
+            UUID transactionUUID = UUID.Random(); // Eine eindeutige Transaktions-ID für die Transaktion
+
+            Hashtable responseData = new Hashtable();
+            responseData["success"] = false;
+
+            // Versuche, die Transaktion auszuführen
+            try
             {
-                m_sslCommonName = (string)request.Params[5];
+                // Logge die Übertragung
+                m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Transferring money from {0} to {1}, Amount = {2}", senderID, receiverID, amount);
+
+                // Führe die tatsächliche Transaktion durch, indem die handlePayMoneyCharge-Methode aufgerufen wird
+                XmlRpcResponse transferResponse = handlePayMoneyCharge(request, remoteClient); // Übergibt die Anfrage an die tatsächliche Überweisungsmethode
+
+                // Überprüfe, ob die Antwort erfolgreich war
+                if (transferResponse != null && transferResponse.Value is Hashtable transferResult &&
+                    transferResult.ContainsKey("success") && (bool)transferResult["success"])
+                {
+                    // Wenn die Transaktion erfolgreich war, setze die Antwortdaten
+                    responseData["success"] = true;
+                    responseData["message"] = $"Successfully purchased {amount} currency for AgentId {agentId}";
+                }
+                else
+                {
+                    // Fehler bei der Überweisung
+                    responseData["message"] = "Currency purchase failed during money transfer.";
+                }
             }
-            else if (request.Params.Count == 5)
+            catch (Exception ex)
             {
-                m_sslCommonName = (string)request.Params[4];
-                if (m_sslCommonName == "gridproxy") m_sslCommonName = "";
+                // Fehlerbehandlung
+                m_log.Error($"[BUY CURRENCY]: Error processing currency purchase: {ex.Message}");
+                responseData["message"] = "Currency purchase failed.";
+            }
+
+            // Erstelle die Antwort
+            XmlRpcResponse returnval = new XmlRpcResponse { Value = responseData };
+
+            // Protokolliere die XML-Antwort
+            m_log.InfoFormat("[BUY CURRENCY]: XML Response: {0}", ToXmlString(responseData));
+
+            return returnval;
+        }
+        private bool PerformMoneyTransfer(string senderID, string receiverID, int amount)
+        {
+            // Hier könnte eine echte Logik zur Durchführung des Transfers implementiert werden
+            // Z.B. Datenbankoperationen, API-Aufrufe oder andere Logik
+            m_log.InfoFormat("[MONEY TRANSFER]: Transferring {0} from {1} to {2}.", amount, senderID, receiverID);
+
+            // Beispiel: Erfolgreiche Transaktion zurückgeben
+            return true; // Diese Funktion muss die echte Logik des Geldtransfers implementieren.
+        }
+
+        private void InitializeUserCurrency(string agentId)
+        {
+            m_log.InfoFormat("[INITIALIZE USER CURRENCY]: Initializing currency for new user: {0}", agentId);
+            int realMoney = m_realMoney; // Aus der MoneyServer.ini geladen
+            int gameMoney = m_gameMoney; // Aus der MoneyServer.ini geladen
+
+            // Beispiel-Datenbankaufruf: Füge Startbeträge hinzu
+            //Mono.Addins.Database.AddCurrency(agentId, realMoney, gameMoney);
+
+
+            //Mono.Addins.Database db = new Mono.Addins.Database();
+            //db.AddCurrency(agentId, realMoney, gameMoney);
+
+            m_log.InfoFormat("[INITIALIZE USER CURRENCY]: User {0} initialized with {1}€ and {2}L$.", agentId, realMoney, gameMoney);
+        }
+        private Hashtable ApplyFallbackCredit(string agentId)
+        {
+            m_log.WarnFormat("[FALLBACK CREDIT]: Applying fallback credit for user {0}", agentId);
+            return new Hashtable
+            {
+                { "success", true },
+                { "creditedAmount", 100 },
+                { "message", "Fallback credit applied due to transaction failure." }
+            };
+        }
+        private void LoadCurrencySettings()
+        {
+            //m_realMoney = ConfigManager.GetInt("MoneyServer", "m_realMoney", 10); // Standard: 10€
+            //m_gameMoney = ConfigManager.GetInt("MoneyServer", "m_gameMoney", 500); // Standard: 500L$
+            m_log.InfoFormat("[LOAD CURRENCY SETTINGS]: Loaded configuration - RealMoney: {0}€, GameMoney: {1}L$", m_realMoney, m_gameMoney);
+        }
+        public bool ValidateTransaction(UUID transactionID, string secureCode)
+        {
+            // Die Methode ValidateTransfer aus IMoneyDBService verwenden
+            bool isValid = ValidateTransfer(secureCode, transactionID);
+            if (!isValid)
+            {
+                m_log.ErrorFormat("[MONEY SERVER]: Transaction validation failed for TransactionID: {0}", transactionID);
+                return false;
+            }
+            return true;
+        }
+        public bool AddMoney(UUID transactionUUID)
+        {
+            // Geld zu einer Transaktion hinzufügen
+            bool success = DoAddMoney(transactionUUID);
+            if (!success)
+            {
+                m_log.ErrorFormat("[MONEY SERVER]: Failed to add money for TransactionUUID: {0}", transactionUUID);
+                return false;
+            }
+            return true;
+        }
+        public bool WithdrawMoney(UUID transactionID, string senderID, int amount)
+        {
+            bool success = withdrawMoney(transactionID, senderID, amount);
+            if (!success)
+            {
+                m_log.ErrorFormat("[MONEY SERVER]: Failed to withdraw {0} for sender {1} in TransactionID: {2}", amount, senderID, transactionID);
+                return false;
+            }
+            return true;
+        }
+        public bool GiveMoney(UUID transactionID, string receiverID, int amount)
+        {
+            bool success = giveMoney(transactionID, receiverID, amount);
+            if (!success)
+            {
+                m_log.ErrorFormat("[MONEY SERVER]: Failed to give {0} to receiver {1} in TransactionID: {2}", amount, receiverID, transactionID);
+                return false;
+            }
+            return true;
+        }
+        public bool UpdateTransactionStatus(UUID transactionID, int status, string description)
+        {
+            bool success = updateTransactionStatus(transactionID, status, description);
+            if (!success)
+            {
+                m_log.ErrorFormat("[MONEY SERVER]: Failed to update status for TransactionID: {0} with Status: {1}", transactionID, status);
+                return false;
+            }
+            return true;
+        }
+        public bool AddUser(string userID, int balance, int status, int type)
+        {
+            bool success = addUser(userID, balance, status, type);
+            if (!success)
+            {
+                m_log.ErrorFormat("[MONEY SERVER]: Failed to add user {0} with balance {1}", userID, balance);
+                return false;
+            }
+            return true;
+        }
+        public new IEnumerable<TransactionData> GetTransactionHistory(string userID, int startTime, int endTime)
+        {
+            return GetTransactionHistory(userID, startTime, endTime);
+        }
+        public new UserInfo FetchUserInfo(string userID)
+        {
+            return FetchUserInfo(userID);
+        }
+        public new bool UserExists(string userID)
+        {
+            return UserExists(userID);
+        }
+        public bool PerformTransaction(UUID transactionUUID)
+        {
+            bool success = DoTransfer(transactionUUID);
+            if (!success)
+            {
+                m_log.ErrorFormat("[MONEY SERVER]: Failed to perform transaction for TransactionUUID: {0}", transactionUUID);
+                return false;
+            }
+            return true;
+        }
+        public static bool IsValidEmail(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return false;
+            }
+
+            // Regular Expression für gültige E-Mail-Adressen
+            const string pattern =
+                @"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$";
+
+            // Überprüfen, ob die E-Mail-Adresse das Muster erfüllt
+            return Regex.IsMatch(email, pattern, RegexOptions.Compiled);
+        }
+        private static UUID GenerateTransactionID()
+        {
+            byte[] randomBuf = new byte[16];
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(randomBuf);
+            }
+            return new UUID(new Guid(randomBuf));
+        }
+
+        private Dictionary<UUID, int> balances = new Dictionary<UUID, int>();
+
+        public int GetBalance(UUID uuid)
+        {
+            if (balances.TryGetValue(uuid, out int balance))
+            {
+                return balance;
             }
             else
             {
-                m_sslCommonName = "";
+                // Return a default value if the UUID is not found
+                return 0;
             }
-            return m_sslCommonName;
         }
-        /**/
-        /// <summary>Gets the name of the SSL common.</summary>
-        public string GetSSLCommonName()
+
+        public void SetBalance(UUID uuid, int balance)
         {
-            return m_sslCommonName;
+            balances[uuid] = balance;
+        }
+
+        #endregion
+        // ##################     XMLRPC Pasing    ##################
+        #region XMLRPC Pasing
+
+
+        public static string ToXmlStringMini(Hashtable data)
+        {
+            XmlDocument doc = new XmlDocument();
+            XmlElement root = doc.CreateElement("methodResponse");
+            doc.AppendChild(root);
+
+            XmlElement paramsElement = doc.CreateElement("params");
+            root.AppendChild(paramsElement);
+
+            foreach (DictionaryEntry entry in data)
+            {
+                XmlElement param = doc.CreateElement("param");
+                XmlElement value = doc.CreateElement("value");
+                value.InnerText = entry.Value.ToString();
+                param.AppendChild(value);
+                paramsElement.AppendChild(param);
+            }
+
+            return doc.OuterXml;
+        }
+        private string ToXmlString(Hashtable data)
+        {
+            XmlDocument doc = new XmlDocument();
+            XmlNode methodCallNode = doc.CreateElement("methodCall");
+
+            XmlNode methodNameNode = doc.CreateElement("methodName");
+            methodNameNode.InnerText = "response";
+            methodCallNode.AppendChild(methodNameNode);
+
+            XmlNode paramsNode = doc.CreateElement("params");
+            foreach (DictionaryEntry entry in data)
+            {
+                XmlNode paramNode = doc.CreateElement("param");
+
+                XmlNode valueNode = doc.CreateElement("value");
+                if (entry.Value is Hashtable)
+                {
+                    XmlNode structNode = doc.CreateElement("struct");
+                    foreach (DictionaryEntry structEntry in (Hashtable)entry.Value)
+                    {
+                        XmlNode memberNode = doc.CreateElement("member");
+                        XmlNode nameNode = doc.CreateElement("name");
+                        nameNode.InnerText = structEntry.Key.ToString();
+                        XmlNode valueNode2 = doc.CreateElement("value");
+                        valueNode2.InnerText = structEntry.Value.ToString();
+                        memberNode.AppendChild(nameNode);
+                        memberNode.AppendChild(valueNode2);
+                        structNode.AppendChild(memberNode);
+                    }
+                    valueNode.AppendChild(structNode);
+                }
+                else
+                {
+                    valueNode.InnerText = entry.Value.ToString();
+                }
+
+                paramNode.AppendChild(valueNode);
+                paramsNode.AppendChild(paramNode);
+            }
+
+            methodCallNode.AppendChild(paramsNode);
+            doc.AppendChild(methodCallNode);
+            return doc.OuterXml;
+        }
+
+        // Methode zur Verarbeitung und Parsing der XML-RPC-Anfrage
+        private object ParseXmlRpcRequest(string xml)
+        {
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(xml);
+
+            XmlNode methodCallNode = doc.SelectSingleNode("/methodCall");
+            XmlNode methodNameNode = methodCallNode.SelectSingleNode("methodName");
+
+            if (methodNameNode == null)
+                throw new Exception("Missing method name");
+
+            string methodName = methodNameNode.InnerText;
+            XmlNodeList members = methodCallNode.SelectNodes("//param/value/struct/member");
+
+            if (methodName == "getCurrencyQuote")
+            {
+                CurrencyQuoteRequest request = new CurrencyQuoteRequest();
+                foreach (XmlNode member in members)
+                {
+                    string name = member.SelectSingleNode("name").InnerText;
+                    string value = member.SelectSingleNode("value").InnerText;
+
+                    switch (name)
+                    {
+                        case "agentId": request.AgentId = value; break;
+                        case "currencyBuy": request.CurrencyBuy = int.Parse(value); break;
+                        case "language": request.Language = value; break;
+                        case "secureSessionId": request.SecureSessionId = value; break;
+                        case "viewerBuildVersion": request.ViewerBuildVersion = value; break;
+                        case "viewerChannel": request.ViewerChannel = value; break;
+                        case "viewerMajorVersion": request.ViewerMajorVersion = int.Parse(value); break;
+                        case "viewerMinorVersion": request.ViewerMinorVersion = int.Parse(value); break;
+                        case "viewerPatchVersion": request.ViewerPatchVersion = int.Parse(value); break;
+                    }
+                }
+                m_log.InfoFormat("[MONEY XML RPC MODULE]: Processed Currency Quote Request for AgentId: {0}", request.AgentId);
+                return request;
+
+            }
+            else if (methodName == "preflightBuyLandPrep")
+            {
+                LandPurchaseRequest request = new LandPurchaseRequest();
+                foreach (XmlNode member in members)
+                {
+                    string name = member.SelectSingleNode("name").InnerText;
+                    string value = member.SelectSingleNode("value").InnerText;
+
+                    switch (name)
+                    {
+                        case "agentId": request.AgentId = value; break;
+                        case "billableArea": request.BillableArea = int.Parse(value); break;
+                        case "currencyBuy": request.CurrencyBuy = int.Parse(value); break;
+                        case "language": request.Language = value; break;
+                        case "secureSessionId": request.SecureSessionId = value; break;
+                    }
+                }
+                m_log.InfoFormat("[MONEY XML RPC MODULE]: Processed Land Purchase Request for AgentId: {0}, BillableArea: {1}", request.AgentId, request.BillableArea);
+                return request;
+            }
+            m_log.ErrorFormat("[MONEY XML RPC MODULE]: Unknown method name: {0}", methodName);
+            throw new Exception("Unknown method name: " + methodName);
+        }
+
+
+        private void LogXmlRpcRequestFile(IOSHttpRequest request)
+        {
+            try
+            {
+                // Erstelle einen Dateipfad für das Log
+                string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xmlrpc_debug.log");
+
+                // Lies den Request-Body
+                string requestBody;
+                using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
+                {
+                    requestBody = reader.ReadToEnd();
+                }
+
+                // Bereite den Logeintrag vor
+                string logEntry = $"{DateTime.UtcNow}: {request.RawUrl}\n{requestBody}\n\n";
+
+                // Schreibe den Logeintrag in die Datei
+                File.AppendAllText(logFilePath, logEntry);
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XML RPC MODULE DEBUG]: Error logging XML-RPC request: {0}", ex.Message);
+            }
+        }
+
+        private void LogXmlRpcRequestConsole(IOSHttpRequest request)
+        {
+            m_log.InfoFormat("[MONEY XML RPC MODULE]: {0}", new StreamReader(request.InputStream).ReadToEnd());  // TODO: test
+
+            try
+            {
+                // Lies den Request-Body
+                string requestBody;
+                using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
+                {
+                    requestBody = reader.ReadToEnd();
+                }
+
+                // Bereite den Logeintrag vor
+                string logEntry = $"{DateTime.UtcNow}: {request.RawUrl}\n{requestBody}\n\n";
+
+                // Schreibe den Logeintrag in das Log
+                m_log.Info(logEntry);
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XML RPC MODULE DEBUG]: Error logging XML-RPC request: {0}", ex.Message);
+            }
+        }
+        #endregion
+        // ##################     handler         ##################
+        #region handler
+
+        // Spezifische Handler BalanceUpdateHandler: Verarbeitet Updates zum Kontostand.
+        public XmlRpcResponse BalanceUpdateHandler(XmlRpcRequest request, IPEndPoint client)
+        {
+            if (request == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: BalanceUpdateHandler: request is null.");
+                return new XmlRpcResponse();
+            }
+
+            if (client == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: BalanceUpdateHandler: client is null.");
+                return new XmlRpcResponse();
+            }
+
+            try
+            {
+                Hashtable requestData = (Hashtable)request.Params[0];
+                string balanceUpdateData = (string)requestData["balanceUpdateData"];
+
+                // Process the balance update data
+                m_log.InfoFormat("[MONEY XMLRPC]: BalanceUpdateHandler: Updating balance for user {0}", balanceUpdateData);
+
+                XmlRpcResponse response = new XmlRpcResponse();
+                Hashtable responseData = new Hashtable();
+                responseData.Add("success", true);
+                response.Value = responseData;
+                return response;
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: BalanceUpdateHandler: Exception occurred: {0}", ex.Message);
+                return new XmlRpcResponse();
+            }
+        }
+
+        // Spezifische Handler UserAlertHandler: Handhabt Benutzerbenachrichtigungen.
+        public XmlRpcResponse UserAlertHandler(XmlRpcRequest request, IPEndPoint client)
+        {
+            try
+            {
+                Hashtable requestData = (Hashtable)request.Params[0];
+                string alertMessage = (string)requestData["alertMessage"];
+
+                // Process the alert message
+                m_log.InfoFormat("[MONEY XMLRPC]: UserAlertHandler: Alert message received: {0}", alertMessage);
+
+                XmlRpcResponse response = new XmlRpcResponse();
+                Hashtable responseData = new Hashtable();
+                responseData.Add("success", true);
+                response.Value = responseData;
+                return response;
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: UserAlertHandler: Exception occurred: {0}", ex.Message);
+                return new XmlRpcResponse();
+            }
         }
 
         /*
@@ -1994,7 +1558,6 @@ namespace OpenSim.Grid.MoneyServer
             responseData["success"] = true;
             return response;
         }
-
 
         /*
         handleTransaction
@@ -2285,6 +1848,7 @@ namespace OpenSim.Grid.MoneyServer
             }
             return response;
         }
+
         /*
         handleScriptTransaction
         Zweck:
@@ -2554,39 +2118,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-
-        /*
-        handlePayMoneyCharge
-        Zweck:
-            Führt eine Transaktion aus, bei der Geld von einem Benutzer (senderID) an einen anderen Benutzer (receiverID) übertragen wird.
-            Prüft dabei die Authentizität der Sitzung (Session-IDs) und speichert Transaktionsdetails in einer Datenbank.
-        Hauptablauf:
-            Parameterprüfung: Die Funktion prüft, ob alle notwendigen Parameter (z. B. senderID, amount, transactionType) in der Anforderung enthalten sind.
-            Authentifizierung: Vergleicht die Sitzungs-IDs und sichert die Sitzung ab.
-            Transaktionserstellung: Erstellt einen Transaktionsdatensatz mit Status PENDING und speichert ihn in der Datenbank.
-            Benachrichtigung: Sendet eine Nachricht über die erfolgte Transaktion und führt die eigentliche Überweisung durch (NotifyTransfer).
-            Fehlerbehandlung: Verarbeitet mögliche Ausfälle, etwa durch Rollback der Transaktion.
-        Anwendung:
-        Diese Funktion wird von einem Client aufgerufen, der eine Zahlung oder Gebühr auslösen möchte. Beispielaufruf:
-
-        XmlRpcRequest request = new XmlRpcRequest();
-        request.Params = new Hashtable
-        {
-            {"senderID", "uuid-of-sender"},
-            {"receiverID", "uuid-of-receiver"},
-            {"amount", 100},
-            {"description", "Payment for services"}
-        };
-
-        XmlRpcResponse response = handlePayMoneyCharge(request, remoteClient);
-
-        */
-        // added by Fumi.Iseki
-        /// <summary>
-        /// handle pay charge transaction. no check receiver information.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handlePayMoneyCharge(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge:");
@@ -2613,6 +2144,7 @@ namespace OpenSim.Grid.MoneyServer
             responseData["success"] = false;
             UUID transactionUUID = UUID.Random();
 
+            // Parameter aus der Anfrage extrahieren
             if (requestData.ContainsKey("senderID")) senderID = (string)requestData["senderID"];
             if (requestData.ContainsKey("senderSessionID")) senderSessionID = (string)requestData["senderSessionID"];
             if (requestData.ContainsKey("senderSecureSessionID")) senderSecureSessionID = (string)requestData["senderSecureSessionID"];
@@ -2627,446 +2159,111 @@ namespace OpenSim.Grid.MoneyServer
             if (requestData.ContainsKey("objectName")) objectName = (string)requestData["objectName"];
 
             m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Transfering money from {0} to {1}, Amount = {2}", senderID, receiverID, amount);
-            m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Object ID = {0}, Object Name = {1}", objectID, objectName);
 
-            if (m_sessionDic.ContainsKey(senderID) && m_secureSessionDic.ContainsKey(senderID))
+            // Sitzungsprüfung für SYSTEM überspringen
+            if (senderID == m_bankerAvatar || senderID == "SYSTEM")
             {
-                if (m_sessionDic[senderID] == senderSessionID && m_secureSessionDic[senderID] == senderSecureSessionID)
+                m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Sender ist SYSTEM oder BankerAvatar. Sitzungsprüfung wird übersprungen.");
+            }
+            else if (m_sessionDic.ContainsKey(senderID) && m_secureSessionDic.ContainsKey(senderID))
+            {
+                if (m_sessionDic[senderID] != senderSessionID || m_secureSessionDic[senderID] != senderSecureSessionID)
                 {
-                    m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Pay from {0}", senderID);
-                    int time = (int)((DateTime.UtcNow.Ticks - TicksToEpoch) / 10000000);
-                    try
-                    {
-                        TransactionData transaction = new TransactionData();
-                        transaction.TransUUID = transactionUUID;
-                        transaction.Sender = senderID;
-                        transaction.Receiver = receiverID;
-                        transaction.Amount = amount;
-                        transaction.ObjectUUID = objectID;
-                        transaction.ObjectName = objectName;
-                        transaction.RegionHandle = regionHandle;
-                        transaction.RegionUUID = regionUUID;
-                        transaction.Type = transactionType;
-                        transaction.Time = time;
-                        transaction.SecureCode = UUID.Random().ToString();
-                        transaction.Status = (int)Status.PENDING_STATUS;
-                        transaction.CommonName = GetSSLCommonName();
-                        transaction.Description = description + " " + DateTime.UtcNow.ToString();
-
-                        bool result = m_moneyDBService.addTransaction(transaction);
-                        if (result)
-                        {
-                            UserInfo user = m_moneyDBService.FetchUserInfo(senderID);
-                            if (user != null)
-                            {
-                                if (amount > 0 || (m_enableAmountZero && amount == 0))
-                                {
-                                    string message = string.Format(m_BalanceMessagePayCharge, amount, "SYSTEM", "");
-                                    responseData["success"] = NotifyTransfer(transactionUUID, message, "", "");
-                                }
-                                else if (amount == 0)
-                                {
-                                    responseData["success"] = true;     // No messages for L$0 object. by Fumi.Iseki
-                                }
-                                return response;
-                            }
-                        }
-                        else
-                        {  // add transaction failed
-                            m_log.ErrorFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Pay money transaction for user {0} failed.", senderID);
-                        }
-                        return response;
-                    }
-                    catch (Exception e)
-                    {
-                        m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Exception occurred while pay money transaction: " + e.ToString());
-                    }
+                    m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Sitzungsprüfung für Sender fehlgeschlagen " + senderID);
+                    responseData["message"] = "Session check failure, please re-login later!";
                     return response;
-                }
-            }
-
-            m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Session authentication failure for sender " + senderID);
-            responseData["message"] = "Session check failure, please re-login later!";
-            return response;
-        }
-
-        /*
-        NotifyTransfer
-        Zweck:
-            Setzt eine begonnene Transaktion fort, nachdem sie vom Benutzer bestätigt wurde.
-            Führt die eigentliche Übertragung der Mittel zwischen Konten durch und aktualisiert den Kontostand.
-        Hauptablauf:
-            Transaktionsvalidierung: Prüft, ob die Transaktion in der Datenbank abgeschlossen ist (Status.SUCCESS_STATUS).
-            Kontostandaktualisierung: Aktualisiert den Kontostand von Sender und Empfänger.
-            Objektübergabe: Benachrichtigt andere Dienste, wenn ein virtueller Gegenstand Teil der Transaktion ist.
-        Anwendung:
-        Wird intern von der Anwendung aufgerufen, nachdem eine Transaktion erfolgreich autorisiert wurde.
-        */
-        //  added by Fumi.Iseki
-        /// <summary>
-        /// Continue transaction with no confirm.
-        /// </summary>
-        /// <param name="transactionUUID"></param>
-        /// <returns></returns>
-        public bool NotifyTransfer(UUID transactionUUID, string msg2sender, string msg2receiver, string objectName)
-        {
-            m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: User has accepted the transaction, now continue with the transaction");
-
-            try
-            {
-                if (m_moneyDBService.DoTransfer(transactionUUID))
-                {
-                    TransactionData transaction = m_moneyDBService.FetchTransaction(transactionUUID);
-                    if (transaction != null && transaction.Status == (int)Status.SUCCESS_STATUS)
-                    {
-                        m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction Type = {0}", transaction.Type);
-                        m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Payment finished successfully, now update balance {0}", transactionUUID.ToString());
-
-                        bool updateSender = true;
-                        bool updateReceiv = true;
-                        if (transaction.Sender == transaction.Receiver) updateSender = false;
-                        //if (transaction.Type==(int)TransactionType.UploadCharge) return true;
-                        if (transaction.Type == (int)TransactionType.UploadCharge) updateReceiv = false;
-
-                        if (updateSender)
-                        {
-                            UserInfo receiverInfo = m_moneyDBService.FetchUserInfo(transaction.Receiver);
-                            string receiverName = "unknown user";
-                            if (receiverInfo != null) receiverName = receiverInfo.Avatar;
-                            string snd_message = string.Format(msg2sender, transaction.Amount, receiverName, objectName);
-                            UpdateBalance(transaction.Sender, snd_message);
-                        }
-                        if (updateReceiv)
-                        {
-                            UserInfo senderInfo = m_moneyDBService.FetchUserInfo(transaction.Sender);
-                            string senderName = "unknown user";
-                            if (senderInfo != null) senderName = senderInfo.Avatar;
-                            string rcv_message = string.Format(msg2receiver, transaction.Amount, senderName, objectName);
-                            UpdateBalance(transaction.Receiver, rcv_message);
-                        }
-
-                        // Notify to sender
-                        if (transaction.Type == (int)TransactionType.PayObject)
-                        {
-                            m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Now notify opensim to give object to customer {0} ", transaction.Sender);
-                            Hashtable requestTable = new Hashtable();
-                            requestTable["clientUUID"] = transaction.Sender;
-                            requestTable["receiverUUID"] = transaction.Receiver;
-
-                            if (m_sessionDic.ContainsKey(transaction.Sender) && m_secureSessionDic.ContainsKey(transaction.Sender))
-                            {
-                                requestTable["clientSessionID"] = m_sessionDic[transaction.Sender];
-                                requestTable["clientSecureSessionID"] = m_secureSessionDic[transaction.Sender];
-                            }
-                            else
-                            {
-                                requestTable["clientSessionID"] = UUID.Zero.ToString();
-                                requestTable["clientSecureSessionID"] = UUID.Zero.ToString();
-                            }
-                            requestTable["transactionType"] = transaction.Type;
-                            requestTable["amount"] = transaction.Amount;
-                            requestTable["objectID"] = transaction.ObjectUUID;
-                            requestTable["objectName"] = transaction.ObjectName;
-                            requestTable["regionHandle"] = transaction.RegionHandle;
-
-                            UserInfo user = m_moneyDBService.FetchUserInfo(transaction.Sender);
-                            if (user != null)
-                            {
-                                Hashtable responseTable = genericCurrencyXMLRPCRequest(requestTable, "OnMoneyTransfered", user.SimIP);
-
-                                if (responseTable != null && responseTable.ContainsKey("success"))
-                                {
-                                    //User not online or failed to get object ?
-                                    if (!(bool)responseTable["success"])
-                                    {
-                                        m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: User {0} can't get the object, rolling back.", transaction.Sender);
-                                        if (RollBackTransaction(transaction))
-                                        {
-                                            m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction {0} failed but roll back succeeded.", transactionUUID.ToString());
-                                        }
-                                        else
-                                        {
-                                            m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction {0} failed and roll back failed as well.",
-                                                                                                                        transactionUUID.ToString());
-                                        }
-                                    }
-                                    else
-                                    {
-                                        m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction {0} finished successfully.", transactionUUID.ToString());
-                                        return true;
-                                    }
-                                }
-                            }
-                            return false;
-                        }
-                        return true;
-                    }
-                }
-                m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction {0} failed.", transactionUUID.ToString());
-            }
-            catch (Exception e)
-            {
-                m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: exception occurred when transaction {0}: {1}", transactionUUID.ToString(), e.ToString());
-            }
-
-            return false;
-        }
-
-        /*
-        handleGetBalance
-        Zweck:
-            Ermittelt den Kontostand eines Benutzers.
-        Hauptablauf:
-            Parameterprüfung: Die Funktion prüft, ob alle notwendigen Parameter (clientUUID, clientSessionID, clientSecureSessionID) bereitgestellt werden.
-            Authentifizierung: Verifiziert die Sitzung anhand der bereitgestellten IDs.
-            Kontostandabfrage: Ruft den Kontostand des Benutzers aus der Datenbank ab und gibt diesen zurück.
-        Anwendung:
-        Wird aufgerufen, wenn ein Client den aktuellen Kontostand abfragen möchte. Beispielaufruf:
-
-        XmlRpcRequest request = new XmlRpcRequest();
-        request.Params = new Hashtable
-        {
-            {"clientUUID", "uuid-of-client"},
-            {"clientSessionID", "session-id"},
-            {"clientSecureSessionID", "secure-session-id"}
-        };
-
-        XmlRpcResponse response = handleGetBalance(request, remoteClient);
-
-        */
-        /// <summary>
-        /// Get the user balance.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
-        public XmlRpcResponse handleGetBalance(XmlRpcRequest request, IPEndPoint remoteClient)
-        {
-            GetSSLCommonName(request);
-
-            Hashtable requestData = (Hashtable)request.Params[0];
-            XmlRpcResponse response = new XmlRpcResponse();
-            Hashtable responseData = new Hashtable();
-            response.Value = responseData;
-
-            string clientUUID = string.Empty;
-            string sessionID = string.Empty;
-            string secureID = string.Empty;
-            int balance;
-
-            responseData["success"] = false;
-
-            if (requestData.ContainsKey("clientUUID")) clientUUID = (string)requestData["clientUUID"];
-            if (requestData.ContainsKey("clientSessionID")) sessionID = (string)requestData["clientSessionID"];
-            if (requestData.ContainsKey("clientSecureSessionID")) secureID = (string)requestData["clientSecureSessionID"];
-
-            m_log.InfoFormat("[MONEY XMLRPC]: handleGetBalance: Getting balance for user {0}", clientUUID);
-
-            if (m_sessionDic.ContainsKey(clientUUID) && m_secureSessionDic.ContainsKey(clientUUID))
-            {
-                if (m_sessionDic[clientUUID] == sessionID && m_secureSessionDic[clientUUID] == secureID)
-                {
-                    try
-                    {
-                        balance = m_moneyDBService.getBalance(clientUUID);
-                        if (balance == -1) // User not found
-                        {
-                            responseData["description"] = "user not found";
-                            responseData["clientBalance"] = 0;
-                        }
-                        else if (balance >= 0)
-                        {
-                            responseData["success"] = true;
-                            responseData["clientBalance"] = balance;
-                        }
-
-                        return response;
-                    }
-                    catch (Exception e)
-                    {
-                        m_log.ErrorFormat("[MONEY XMLRPC]: handleGetBalance: Can't get balance for user {0}, Exception {1}", clientUUID, e.ToString());
-                    }
-                    return response;
-                }
-            }
-
-            m_log.Error("[MONEY XMLRPC]: handleGetBalance: Session authentication failed when getting balance for user " + clientUUID);
-            responseData["description"] = "Session check failure, please re-login";
-            return response;
-        }
-
-        /*
-        genericCurrencyXMLRPCRequest
-        Zweck:
-            Generische Funktion zur Kommunikation mit externen Diensten über XML-RPC.
-        Hauptablauf:
-            Parameterprüfung: Prüft, ob die Anforderung gültig ist.
-            Senden der Anforderung: Erstellt eine XML-RPC-Anfrage und sendet sie an die angegebene URI.
-            Fehlerbehandlung: Gibt bei Fehlschlägen einen Fehler-Hash zurück.
-        Anwendung:
-        Diese Funktion wird von anderen Funktionen verwendet, um mit entfernten Diensten zu kommunizieren.
-        */
-        /// <summary>   
-        /// Generic XMLRPC client abstraction
-        /// </summary>   
-        /// <param name="ReqParams">Hashtable containing parameters to the method</param>   
-        /// <param name="method">Method to invoke</param>   
-        /// <returns>Hashtable with success=>bool and other values</returns>   
-        private Hashtable genericCurrencyXMLRPCRequest(Hashtable reqParams, string method, string uri)
-        {
-            m_log.InfoFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: to {0}", uri);
-
-            if (reqParams.Count <= 0 || string.IsNullOrEmpty(method)) return null;
-
-            if (m_checkServerCert)
-            {
-                if (!uri.StartsWith("https://"))
-                {
-                    m_log.InfoFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: CheckServerCert is true, but protocol is not HTTPS. Please check INI file.");
-                    //return null; 
                 }
             }
             else
             {
-                if (!uri.StartsWith("https://") && !uri.StartsWith("http://"))
-                {
-                    m_log.ErrorFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: Invalid Region Server URL: {0}", uri);
-                    return null;
-                }
+                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Sitzungsprüfung für Sender fehlgeschlagen " + senderID);
+                responseData["message"] = "Session check failure, please re-login later!";
+                return response;
             }
 
-            ArrayList arrayParams = new ArrayList();
-            arrayParams.Add(reqParams);
-            XmlRpcResponse moneyServResp = null;
+            int time = (int)((DateTime.UtcNow.Ticks - TicksToEpoch) / 10000000);
             try
             {
-                NSLXmlRpcRequest moneyModuleReq = new NSLXmlRpcRequest(method, arrayParams);
-                moneyServResp = moneyModuleReq.certSend(uri, m_certVerify, m_checkServerCert, MONEYMODULE_REQUEST_TIMEOUT);
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: Unable to connect to Region Server {0}", uri);
-                m_log.ErrorFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: {0}", ex.ToString());
+                TransactionData transaction = new TransactionData();
+                transaction.TransUUID = transactionUUID;
+                transaction.Sender = senderID;
+                transaction.Receiver = receiverID;
+                transaction.Amount = amount;
+                transaction.ObjectUUID = objectID;
+                transaction.ObjectName = objectName;
+                transaction.RegionHandle = regionHandle;
+                transaction.RegionUUID = regionUUID;
+                transaction.Type = transactionType;
+                transaction.Time = time;
+                transaction.SecureCode = UUID.Random().ToString();
+                transaction.Status = (int)Status.PENDING_STATUS;
+                transaction.CommonName = GetSSLCommonName();
+                transaction.Description = description + " " + DateTime.UtcNow.ToString();
 
-                Hashtable ErrorHash = new Hashtable();
-                ErrorHash["success"] = false;
-                ErrorHash["errorMessage"] = "Failed to perform actions on OpenSim Server";
-                ErrorHash["errorURI"] = "";
-                return ErrorHash;
-            }
-
-            if (moneyServResp == null || moneyServResp.IsFault)
-            {
-                Hashtable ErrorHash = new Hashtable();
-                ErrorHash["success"] = false;
-                ErrorHash["errorMessage"] = "Failed to perform actions on OpenSim Server";
-                ErrorHash["errorURI"] = "";
-                return ErrorHash;
-            }
-
-            Hashtable moneyRespData = (Hashtable)moneyServResp.Value;
-            return moneyRespData;
-        }
-
-        /*
-        UpdateBalance
-        Zweck:
-            Aktualisiert den Kontostand eines Benutzers und benachrichtigt ihn optional mit einer Nachricht.
-        Hauptablauf:
-            Sitzungsinformationen abrufen: Sammelt Sitzungsinformationen (clientSessionID, clientSecureSessionID).
-            Benachrichtigung: Sendet eine XML-RPC-Anforderung an den entsprechenden Simulator.
-        Anwendung:
-        Wird intern aufgerufen, wenn der Kontostand nach einer Transaktion geändert wurde.
-        */
-        /// <summary>
-        /// Update the client balance.We don't care about the result.
-        /// </summary>
-        /// <param name="userID"></param>
-        private void UpdateBalance(string userID, string message)
-        {
-            string sessionID = string.Empty;
-            string secureID = string.Empty;
-
-            if (m_sessionDic.ContainsKey(userID) && m_secureSessionDic.ContainsKey(userID))
-            {
-                sessionID = m_sessionDic[userID];
-                secureID = m_secureSessionDic[userID];
-
-                Hashtable requestTable = new Hashtable();
-                requestTable["clientUUID"] = userID;
-                requestTable["clientSessionID"] = sessionID;
-                requestTable["clientSecureSessionID"] = secureID;
-                requestTable["Balance"] = m_moneyDBService.getBalance(userID);
-                if (message != "") requestTable["Message"] = message;
-
-                UserInfo user = m_moneyDBService.FetchUserInfo(userID);
-                if (user != null)
+                bool result = m_moneyDBService.addTransaction(transaction);
+                if (result)
                 {
-                    genericCurrencyXMLRPCRequest(requestTable, "UpdateBalance", user.SimIP);
-                    m_log.InfoFormat("[MONEY XMLRPC]: UpdateBalance: Sended UpdateBalance Request to {0}", user.SimIP.ToString());
-                }
-            }
-        }
+                    UserInfo user = m_moneyDBService.FetchUserInfo(senderID);
+                    if (user != null)
+                    {
+                        if (amount > 0 || (m_enableAmountZero && amount == 0))
+                        {
+                            // Manuelle Gutschrift wenn die automatische Gutschrift fehlschlägt
+                            if (!NotifyTransfer(transactionUUID, "Transfer failed, adding money manually.", "", ""))
+                            {
+                                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Gutschrift fehlgeschlagen, versuche manuell Geld hinzuzufügen.");
+                                // Ruft die Methode handleAddBankerMoney auf, um das Geld direkt hinzuzufügen.
+                                Hashtable addMoneyParams = new Hashtable();
+                                addMoneyParams["bankerID"] = "SYSTEM";  // Der "Banker"-ID
+                                addMoneyParams["amount"] = amount;
+                                addMoneyParams["regionHandle"] = regionHandle;
+                                addMoneyParams["regionUUID"] = regionUUID;
+                                addMoneyParams["transactionType"] = transactionType;
+                                addMoneyParams["description"] = "Manuelle Gutschrift nach Fehlermeldung";
 
-        /*
-        RollBackTransaction
-        Zweck:
-        Diese Funktion führt einen "Rollback" (Rückgängig machen) einer fehlgeschlagenen Transaktion durch. 
-        Wenn ein Fehler bei der Abwicklung auftritt, wird das Geld vom Empfänger zurück zum Absender überwiesen.
-        Ablauf:
-            Prüft, ob der Betrag vom Empfängerkonto erfolgreich abgezogen wurde.
-            Überweist den Betrag zurück auf das Absenderkonto.
-            Aktualisiert den Transaktionsstatus auf "FAILED_STATUS".
-            Sendet Benachrichtigungen an beide Parteien.
-            Gibt true zurück, wenn der Rollback erfolgreich war, sonst false.
-        Anwendung:
-        Diese Funktion wird aufgerufen, wenn eine Transaktion abgebrochen werden muss, 
-        z. B. bei technischen Fehlern oder wenn der Käufer das gekaufte Objekt nicht erhält.
-        */
-        /// <summary>
-        /// RollBack the transaction if user failed to get the object paid
-        /// </summary>
-        /// <param name="transaction"></param>
-        /// <returns></returns>
-        protected bool RollBackTransaction(TransactionData transaction)
-        {
-            if (m_moneyDBService.withdrawMoney(transaction.TransUUID, transaction.Receiver, transaction.Amount))
-            {
-                if (m_moneyDBService.giveMoney(transaction.TransUUID, transaction.Sender, transaction.Amount))
+                                //XmlRpcResponse addMoneyResponse = handleAddBankerMoney(new XmlRpcRequest(addMoneyParams), remoteClient);
+                                XmlRpcResponse addMoneyResponse = handleAddBankerMoney(new XmlRpcRequest("AddBankerMoney", new object[] { addMoneyParams }), remoteClient);
+                                Hashtable responseValue = addMoneyResponse.Value as Hashtable;
+                                responseData["success"] = addMoneyResponse != null
+                                    && responseValue != null
+                                    && responseValue.ContainsKey("success")
+                                    && (bool)responseValue["success"];
+                                //responseData["success"] = addMoneyResponse != null && addMoneyResponse.Value.ContainsKey("success") && (bool)addMoneyResponse.Value["success"];
+                            }
+                        }
+                        else if (amount == 0)
+                        {
+                            responseData["success"] = true;     // Keine Nachrichten für L$0 Objekte
+                        }
+                        return response;
+                    }
+                }
+                else
                 {
-                    m_log.InfoFormat("[MONEY XMLRPC]: RollBackTransaction: Transaction {0} is successfully.", transaction.TransUUID.ToString());
-                    m_moneyDBService.updateTransactionStatus(transaction.TransUUID, (int)Status.FAILED_STATUS,
-                                                                    "The buyer failed to get the object, roll back the transaction");
-                    UserInfo senderInfo = m_moneyDBService.FetchUserInfo(transaction.Sender);
-                    UserInfo receiverInfo = m_moneyDBService.FetchUserInfo(transaction.Receiver);
-                    string senderName = "unknown user";
-                    string receiverName = "unknown user";
-                    if (senderInfo != null) senderName = senderInfo.Avatar;
-                    if (receiverInfo != null) receiverName = receiverInfo.Avatar;
-
-                    string snd_message = string.Format(m_BalanceMessageRollBack, transaction.Amount, receiverName, transaction.ObjectName);
-                    string rcv_message = string.Format(m_BalanceMessageRollBack, transaction.Amount, senderName, transaction.ObjectName);
-
-                    if (transaction.Sender != transaction.Receiver) UpdateBalance(transaction.Sender, snd_message);
-                    UpdateBalance(transaction.Receiver, rcv_message);
-                    return true;
+                    m_log.ErrorFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Zahlungstransaktion für Benutzer {0} fehlgeschlagen.", senderID);
                 }
+                return response;
             }
-            return false;
+            catch (Exception e)
+            {
+                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Ausnahme bei der Zahlungstransaktion: " + e.ToString());
+            }
+            return response;
         }
 
         /*
-        handleCancelTransfer
-        Zweck:
-        Ermöglicht Benutzern, eine Transaktion aktiv zu stornieren.
-        Ablauf:
-            Liest Transaktions-ID und Sicherheitscode aus der Anfrage aus.
-            Validiert den Sicherheitscode und die Transaktion.
-            Aktualisiert den Status der Transaktion auf "FAILED_STATUS".
-            Gibt eine XML-RPC-Antwort zurück, die angibt, ob die Stornierung erfolgreich war.
-        Anwendung:
-        Diese Methode wird von einem Benutzer ausgelöst, der eine Transaktion abbrechen möchte. 
-                Sie wird typischerweise über eine XML-RPC-Schnittstelle von einem Client aufgerufen.
-        */
+       handleCancelTransfer
+       Zweck:
+       Ermöglicht Benutzern, eine Transaktion aktiv zu stornieren.
+       Ablauf:
+           Liest Transaktions-ID und Sicherheitscode aus der Anfrage aus.
+           Validiert den Sicherheitscode und die Transaktion.
+           Aktualisiert den Status der Transaktion auf "FAILED_STATUS".
+           Gibt eine XML-RPC-Antwort zurück, die angibt, ob die Stornierung erfolgreich war.
+       Anwendung:
+       Diese Methode wird von einem Benutzer ausgelöst, der eine Transaktion abbrechen möchte. 
+               Sie wird typischerweise über eine XML-RPC-Schnittstelle von einem Client aufgerufen.
+       */
         /// <summary>Handles the cancel transfer.</summary>
         /// <param name="request">The request.</param>
         /// <param name="remoteClient">The remote client.</param>
@@ -3549,10 +2746,644 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+        #endregion
+        // ##################     helper          ##################
+        #region helper
+
+        /*
+        CalculateCost
+        Berechnet die Kosten basierend auf einer Währungsmenge.
+            Beispiel:
+        return currencyAmount * m_CalculateCurrency;
+        */
+        /// <summary>
+        /// Calculates the cost based on the given currency amount.
+        /// </summary>
+        /// <param name="currencyAmount">The amount of currency.</param>
+        /// <returns>The calculated cost.</returns>
+        private int CalculateCost(int currencyAmount)
+        {
+            m_log.InfoFormat("[MONEY XML RPC MODULE]: Cost for {0} currency units: {1}", currencyAmount, currencyAmount * m_CalculateCurrency);
+            // The cost of each currency unit is calculated by multiplying the currency amount by the calculate currency value.
+            // The calculate currency value is a private field of the class.
+            // The commented line is an example of how the price per unit can be set.
+            return currencyAmount * m_CalculateCurrency;
+
+            //return 0;
+        }
+
+        //Spezifische Handler OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
+        public XmlRpcResponse OnMoneyTransferedHandler(XmlRpcRequest request, IPEndPoint client)
+        {
+            if (request == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: OnMoneyTransferedHandler: request is null.");
+                return new XmlRpcResponse();
+            }
+
+            if (client == null)
+            {
+                m_log.Error("[MONEY XMLRPC]: OnMoneyTransferedHandler: client is null.");
+                return new XmlRpcResponse();
+            }
+
+            try
+            {
+                Hashtable requestData = (Hashtable)request.Params[0];
+                string transactionID = (string)requestData["transactionID"];
+                UUID transactionUUID = UUID.Zero;
+                UUID.TryParse(transactionID, out transactionUUID);
+
+                TransactionData transaction = m_moneyDBService.FetchTransaction(transactionUUID);
+                UserInfo user = m_moneyDBService.FetchUserInfo(transaction.Sender);
+
+                m_log.InfoFormat("[MONEY XMLRPC]: OnMoneyTransferedHandler: Transaction {0} from user {1} to user {2} for {3} units",
+                    transactionID, user.Avatar, transaction.Receiver, transaction.Amount);
+
+                XmlRpcResponse response = new XmlRpcResponse();
+                Hashtable responseData = new Hashtable();
+                responseData.Add("success", true);
+                response.Value = responseData;
+                return response;
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: OnMoneyTransferedHandler: Exception occurred: {0}", ex.Message);
+                return new XmlRpcResponse();
+            }
+        }
+
+        /*
+        GetSSLCommonName(XmlRpcRequest request) und GetSSLCommonName()
+        Zweck: Extrahiert den SSL Common Name aus einer Anfrage oder gibt den gespeicherten Wert zurück.
+        Details:
+            Verwendet, um Client-Zertifikate zu validieren.
+            Sicherstellt, dass nur autorisierte Clients zugreifen können.
+        Anwendung: Wichtiger Bestandteil der Sicherheitsüberprüfung im System.
+        */
+        /// <summary>Gets the name of the SSL common.</summary>
+        /// <param name="request">The request.</param>
+        public string GetSSLCommonName(XmlRpcRequest request)
+        {
+            if (request.Params.Count > 5)
+            {
+                m_sslCommonName = (string)request.Params[5];
+            }
+            else if (request.Params.Count == 5)
+            {
+                m_sslCommonName = (string)request.Params[4];
+                if (m_sslCommonName == "gridproxy") m_sslCommonName = "";
+            }
+            else
+            {
+                m_sslCommonName = "";
+            }
+            return m_sslCommonName;
+        }
+
+        /// <summary>Gets the name of the SSL common.</summary>
+        public string GetSSLCommonName()
+        {
+            return m_sslCommonName;
+        }
+
+        public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount, UUID txn, out string result)
+        {
+            result = String.Empty;
+            string description = String.Format("Object {0} pays {1}", resolveObjectName(objectID), resolveAgentName(toID));
+
+            bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description);
+
+
+            BalanceUpdate(fromID, toID, give_result, description);
+
+            return give_result;
+        }
+
+        private string resolveObjectName(UUID objectID)
+        {
+            SceneObjectPart part = findPrim(objectID);
+            if (part != null)
+            {
+                return part.Name;
+            }
+            return String.Empty;
+        }
+
+        private string resolveAgentName(UUID agentID)
+        {
+            // try avatar username surname
+            Scene scene = GetRandomScene();
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+            if (account != null)
+            {
+                string avatarname = account.FirstName + " " + account.LastName;
+                return avatarname;
+            }
+            else
+            {
+                m_log.ErrorFormat(
+                    "[MONEY]: Could not resolve user {0}",
+                    agentID);
+            }
+
+            return String.Empty;
+        }
+
+        /// <summary>
+        /// Utility function Gets a Random scene in the instance.  For when which scene exactly you're doing something with doesn't matter
+        /// </summary>
+        /// <returns></returns>
+        public Scene GetRandomScene()
+        {
+            lock (m_scenes)
+            {
+                foreach (Scene rs in m_scenes.Values)
+                    return rs;
+            }
+            return null;
+        }
+
+        private SceneObjectPart findPrim(UUID objectID)
+        {
+            lock (m_scenes)
+            {
+                foreach (Scene s in m_scenes.Values)
+                {
+                    SceneObjectPart part = s.GetSceneObjectPart(objectID);
+                    if (part != null)
+                    {
+                        return part;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Transfer money
+        /// </summary>
+        /// <param name="Sender"></param>
+        /// <param name="Receiver"></param>
+        /// <param name="amount"></param>
+        /// <returns></returns>
+        private bool doMoneyTransfer(UUID Sender, UUID Receiver, int amount, int transactiontype, string description)
+        {
+            return true;
+        }
+
+        private void BalanceUpdate(UUID senderID, UUID receiverID, bool transactionresult, string description)
+        {
+            IClientAPI sender = LocateClientObject(senderID);
+            IClientAPI receiver = LocateClientObject(receiverID);
+
+            if (senderID != receiverID)
+            {
+                if (sender != null)
+                {
+                    sender.SendMoneyBalance(UUID.Random(), transactionresult, Utils.StringToBytes(description), GetFundsForAgentID(senderID), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                }
+
+                if (receiver != null)
+                {
+                    receiver.SendMoneyBalance(UUID.Random(), transactionresult, Utils.StringToBytes(description), GetFundsForAgentID(receiverID), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sends the the stored money balance to the client
+        /// </summary>
+        /// <param name="client"></param>
+        /// <param name="agentID"></param>
+        /// <param name="SessionID"></param>
+        /// <param name="TransactionID"></param>
+        public void SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
+        {
+            if (client.AgentId == agentID && client.SessionId == SessionID)
+            {
+                int returnfunds = 0;
+
+                try
+                {
+                    returnfunds = GetFundsForAgentID(agentID);
+                }
+                catch (Exception e)
+                {
+                    client.SendAlertMessage(e.Message + " ");
+                }
+
+                client.SendMoneyBalance(TransactionID, true, Array.Empty<byte>(), returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+            }
+            else
+            {
+                client.SendAlertMessage("Unable to send your money balance to you!");
+            }
+        }
+
+        private int GetFundsForAgentID(UUID AgentID)
+        {
+            int returnfunds = 0;
+
+            return returnfunds;
+        }
+
+        /// <summary>
+        /// Locates a IClientAPI for the client specified
+        /// </summary>
+        /// <param name="AgentID"></param>
+        /// <returns></returns>
+        private IClientAPI LocateClientObject(UUID AgentID)
+        {
+            ScenePresence tPresence;
+            lock (m_scenes)
+            {
+                foreach (Scene _scene in m_scenes.Values)
+                {
+                    tPresence = _scene.GetScenePresence(AgentID);
+                    if (tPresence != null && !tPresence.IsDeleted && !tPresence.IsChildAgent)
+                        return tPresence.ControllingClient;
+                }
+            }
+            return null;
+        }
+
+        private Scene LocateSceneClientIn(UUID AgentId)
+        {
+            lock (m_scenes)
+            {
+                foreach (Scene _scene in m_scenes.Values)
+                {
+                    ScenePresence tPresence = _scene.GetScenePresence(AgentId);
+                    if (tPresence != null && !tPresence.IsDeleted && !tPresence.IsChildAgent)
+                        return _scene;
+                }
+            }
+            return null;
+        }
+
+        /*
+        NotifyTransfer
+        Zweck:
+            Setzt eine begonnene Transaktion fort, nachdem sie vom Benutzer bestätigt wurde.
+            Führt die eigentliche Übertragung der Mittel zwischen Konten durch und aktualisiert den Kontostand.
+        Hauptablauf:
+            Transaktionsvalidierung: Prüft, ob die Transaktion in der Datenbank abgeschlossen ist (Status.SUCCESS_STATUS).
+            Kontostandaktualisierung: Aktualisiert den Kontostand von Sender und Empfänger.
+            Objektübergabe: Benachrichtigt andere Dienste, wenn ein virtueller Gegenstand Teil der Transaktion ist.
+        Anwendung:
+        Wird intern von der Anwendung aufgerufen, nachdem eine Transaktion erfolgreich autorisiert wurde.
+        */
+        //  added by Fumi.Iseki
+        /// <summary>
+        /// Continue transaction with no confirm.
+        /// </summary>
+        /// <param name="transactionUUID"></param>
+        /// <returns></returns>
+        public bool NotifyTransfer(UUID transactionUUID, string msg2sender, string msg2receiver, string objectName)
+        {
+            m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: User has accepted the transaction, now continue with the transaction");
+
+            try
+            {
+                if (m_moneyDBService.DoTransfer(transactionUUID))
+                {
+                    TransactionData transaction = m_moneyDBService.FetchTransaction(transactionUUID);
+                    if (transaction != null && transaction.Status == (int)Status.SUCCESS_STATUS)
+                    {
+                        m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction Type = {0}", transaction.Type);
+                        m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Payment finished successfully, now update balance {0}", transactionUUID.ToString());
+
+                        bool updateSender = true;
+                        bool updateReceiv = true;
+                        if (transaction.Sender == transaction.Receiver) updateSender = false;
+                        //if (transaction.Type==(int)TransactionType.UploadCharge) return true;
+                        if (transaction.Type == (int)TransactionType.UploadCharge) updateReceiv = false;
+
+                        if (updateSender)
+                        {
+                            UserInfo receiverInfo = m_moneyDBService.FetchUserInfo(transaction.Receiver);
+                            string receiverName = "unknown user";
+                            if (receiverInfo != null) receiverName = receiverInfo.Avatar;
+                            string snd_message = string.Format(msg2sender, transaction.Amount, receiverName, objectName);
+                            UpdateBalance(transaction.Sender, snd_message);
+                        }
+                        if (updateReceiv)
+                        {
+                            UserInfo senderInfo = m_moneyDBService.FetchUserInfo(transaction.Sender);
+                            string senderName = "unknown user";
+                            if (senderInfo != null) senderName = senderInfo.Avatar;
+                            string rcv_message = string.Format(msg2receiver, transaction.Amount, senderName, objectName);
+                            UpdateBalance(transaction.Receiver, rcv_message);
+                        }
+
+                        // Notify to sender
+                        if (transaction.Type == (int)TransactionType.PayObject)
+                        {
+                            m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Now notify opensim to give object to customer {0} ", transaction.Sender);
+                            Hashtable requestTable = new Hashtable();
+                            requestTable["clientUUID"] = transaction.Sender;
+                            requestTable["receiverUUID"] = transaction.Receiver;
+
+                            if (m_sessionDic.ContainsKey(transaction.Sender) && m_secureSessionDic.ContainsKey(transaction.Sender))
+                            {
+                                requestTable["clientSessionID"] = m_sessionDic[transaction.Sender];
+                                requestTable["clientSecureSessionID"] = m_secureSessionDic[transaction.Sender];
+                            }
+                            else
+                            {
+                                requestTable["clientSessionID"] = UUID.Zero.ToString();
+                                requestTable["clientSecureSessionID"] = UUID.Zero.ToString();
+                            }
+                            requestTable["transactionType"] = transaction.Type;
+                            requestTable["amount"] = transaction.Amount;
+                            requestTable["objectID"] = transaction.ObjectUUID;
+                            requestTable["objectName"] = transaction.ObjectName;
+                            requestTable["regionHandle"] = transaction.RegionHandle;
+
+                            UserInfo user = m_moneyDBService.FetchUserInfo(transaction.Sender);
+                            if (user != null)
+                            {
+                                Hashtable responseTable = genericCurrencyXMLRPCRequest(requestTable, "OnMoneyTransfered", user.SimIP);
+
+                                if (responseTable != null && responseTable.ContainsKey("success"))
+                                {
+                                    //User not online or failed to get object ?
+                                    if (!(bool)responseTable["success"])
+                                    {
+                                        m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: User {0} can't get the object, rolling back.", transaction.Sender);
+                                        if (RollBackTransaction(transaction))
+                                        {
+                                            m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction {0} failed but roll back succeeded.", transactionUUID.ToString());
+                                        }
+                                        else
+                                        {
+                                            m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction {0} failed and roll back failed as well.",
+                                                                                                                        transactionUUID.ToString());
+                                        }
+                                    }
+                                    else
+                                    {
+                                        m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction {0} finished successfully.", transactionUUID.ToString());
+                                        return true;
+                                    }
+                                }
+                            }
+                            return false;
+                        }
+                        return true;
+                    }
+                }
+                m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction {0} failed.", transactionUUID.ToString());
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: NotifyTransfer: exception occurred when transaction {0}: {1}", transactionUUID.ToString(), e.ToString());
+            }
+
+            return false;
+        }
+
+        /*
+       handleGetBalance
+       Zweck:
+           Ermittelt den Kontostand eines Benutzers.
+       Hauptablauf:
+           Parameterprüfung: Die Funktion prüft, ob alle notwendigen Parameter (clientUUID, clientSessionID, clientSecureSessionID) bereitgestellt werden.
+           Authentifizierung: Verifiziert die Sitzung anhand der bereitgestellten IDs.
+           Kontostandabfrage: Ruft den Kontostand des Benutzers aus der Datenbank ab und gibt diesen zurück.
+       Anwendung:
+       Wird aufgerufen, wenn ein Client den aktuellen Kontostand abfragen möchte. Beispielaufruf:
+
+       */
+        /// <summary>
+        /// Get the user balance.
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
+        public XmlRpcResponse handleGetBalance(XmlRpcRequest request, IPEndPoint remoteClient)
+        {
+            GetSSLCommonName(request);
+
+            Hashtable requestData = (Hashtable)request.Params[0];
+            XmlRpcResponse response = new XmlRpcResponse();
+            Hashtable responseData = new Hashtable();
+            response.Value = responseData;
+
+            string clientUUID = string.Empty;
+            string sessionID = string.Empty;
+            string secureID = string.Empty;
+            int balance;
+
+            responseData["success"] = false;
+
+            if (requestData.ContainsKey("clientUUID")) clientUUID = (string)requestData["clientUUID"];
+            if (requestData.ContainsKey("clientSessionID")) sessionID = (string)requestData["clientSessionID"];
+            if (requestData.ContainsKey("clientSecureSessionID")) secureID = (string)requestData["clientSecureSessionID"];
+
+            m_log.InfoFormat("[MONEY XMLRPC]: handleGetBalance: Getting balance for user {0}", clientUUID);
+
+            if (m_sessionDic.ContainsKey(clientUUID) && m_secureSessionDic.ContainsKey(clientUUID))
+            {
+                if (m_sessionDic[clientUUID] == sessionID && m_secureSessionDic[clientUUID] == secureID)
+                {
+                    try
+                    {
+                        balance = m_moneyDBService.getBalance(clientUUID);
+                        if (balance == -1) // User not found
+                        {
+                            responseData["description"] = "user not found";
+                            responseData["clientBalance"] = 0;
+                        }
+                        else if (balance >= 0)
+                        {
+                            responseData["success"] = true;
+                            responseData["clientBalance"] = balance;
+                        }
+
+                        return response;
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat("[MONEY XMLRPC]: handleGetBalance: Can't get balance for user {0}, Exception {1}", clientUUID, e.ToString());
+                    }
+                    return response;
+                }
+            }
+
+            m_log.Error("[MONEY XMLRPC]: handleGetBalance: Session authentication failed when getting balance for user " + clientUUID);
+            responseData["description"] = "Session check failure, please re-login";
+            return response;
+        }
+
+        /*
+        genericCurrencyXMLRPCRequest
+        Zweck:
+            Generische Funktion zur Kommunikation mit externen Diensten über XML-RPC.
+        Hauptablauf:
+            Parameterprüfung: Prüft, ob die Anforderung gültig ist.
+            Senden der Anforderung: Erstellt eine XML-RPC-Anfrage und sendet sie an die angegebene URI.
+            Fehlerbehandlung: Gibt bei Fehlschlägen einen Fehler-Hash zurück.
+        Anwendung:
+        Diese Funktion wird von anderen Funktionen verwendet, um mit entfernten Diensten zu kommunizieren.
+        */
+        /// <summary>   
+        /// Generic XMLRPC client abstraction
+        /// </summary>   
+        /// <param name="ReqParams">Hashtable containing parameters to the method</param>   
+        /// <param name="method">Method to invoke</param>   
+        /// <returns>Hashtable with success=>bool and other values</returns>   
+        private Hashtable genericCurrencyXMLRPCRequest(Hashtable reqParams, string method, string uri)
+        {
+            m_log.InfoFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: to {0}", uri);
+
+            if (reqParams.Count <= 0 || string.IsNullOrEmpty(method)) return null;
+
+            if (m_checkServerCert)
+            {
+                if (!uri.StartsWith("https://"))
+                {
+                    m_log.InfoFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: CheckServerCert is true, but protocol is not HTTPS. Please check INI file.");
+                    //return null; 
+                }
+            }
+            else
+            {
+                if (!uri.StartsWith("https://") && !uri.StartsWith("http://"))
+                {
+                    m_log.ErrorFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: Invalid Region Server URL: {0}", uri);
+                    return null;
+                }
+            }
+
+            ArrayList arrayParams = new ArrayList();
+            arrayParams.Add(reqParams);
+            XmlRpcResponse moneyServResp = null;
+            try
+            {
+                NSLXmlRpcRequest moneyModuleReq = new NSLXmlRpcRequest(method, arrayParams);
+                moneyServResp = moneyModuleReq.certSend(uri, m_certVerify, m_checkServerCert, MONEYMODULE_REQUEST_TIMEOUT);
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: Unable to connect to Region Server {0}", uri);
+                m_log.ErrorFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: {0}", ex.ToString());
+
+                Hashtable ErrorHash = new Hashtable();
+                ErrorHash["success"] = false;
+                ErrorHash["errorMessage"] = "Failed to perform actions on OpenSim Server";
+                ErrorHash["errorURI"] = "";
+                return ErrorHash;
+            }
+
+            if (moneyServResp == null || moneyServResp.IsFault)
+            {
+                Hashtable ErrorHash = new Hashtable();
+                ErrorHash["success"] = false;
+                ErrorHash["errorMessage"] = "Failed to perform actions on OpenSim Server";
+                ErrorHash["errorURI"] = "";
+                return ErrorHash;
+            }
+
+            Hashtable moneyRespData = (Hashtable)moneyServResp.Value;
+            return moneyRespData;
+        }
+
+        /*
+        UpdateBalance
+        Zweck:
+            Aktualisiert den Kontostand eines Benutzers und benachrichtigt ihn optional mit einer Nachricht.
+        Hauptablauf:
+            Sitzungsinformationen abrufen: Sammelt Sitzungsinformationen (clientSessionID, clientSecureSessionID).
+            Benachrichtigung: Sendet eine XML-RPC-Anforderung an den entsprechenden Simulator.
+        Anwendung:
+        Wird intern aufgerufen, wenn der Kontostand nach einer Transaktion geändert wurde.
+        */
+        /// <summary>
+        /// Update the client balance.We don't care about the result.
+        /// </summary>
+        /// <param name="userID"></param>
+        private void UpdateBalance(string userID, string message)
+        {
+            string sessionID = string.Empty;
+            string secureID = string.Empty;
+
+            if (m_sessionDic.ContainsKey(userID) && m_secureSessionDic.ContainsKey(userID))
+            {
+                sessionID = m_sessionDic[userID];
+                secureID = m_secureSessionDic[userID];
+
+                Hashtable requestTable = new Hashtable();
+                requestTable["clientUUID"] = userID;
+                requestTable["clientSessionID"] = sessionID;
+                requestTable["clientSecureSessionID"] = secureID;
+                requestTable["Balance"] = m_moneyDBService.getBalance(userID);
+                if (message != "") requestTable["Message"] = message;
+
+                UserInfo user = m_moneyDBService.FetchUserInfo(userID);
+                if (user != null)
+                {
+                    genericCurrencyXMLRPCRequest(requestTable, "UpdateBalance", user.SimIP);
+                    m_log.InfoFormat("[MONEY XMLRPC]: UpdateBalance: Sended UpdateBalance Request to {0}", user.SimIP.ToString());
+                }
+            }
+        }
+
+        /*
+        RollBackTransaction
+        Zweck:
+        Diese Funktion führt einen "Rollback" (Rückgängig machen) einer fehlgeschlagenen Transaktion durch. 
+        Wenn ein Fehler bei der Abwicklung auftritt, wird das Geld vom Empfänger zurück zum Absender überwiesen.
+        Ablauf:
+            Prüft, ob der Betrag vom Empfängerkonto erfolgreich abgezogen wurde.
+            Überweist den Betrag zurück auf das Absenderkonto.
+            Aktualisiert den Transaktionsstatus auf "FAILED_STATUS".
+            Sendet Benachrichtigungen an beide Parteien.
+            Gibt true zurück, wenn der Rollback erfolgreich war, sonst false.
+        Anwendung:
+        Diese Funktion wird aufgerufen, wenn eine Transaktion abgebrochen werden muss, 
+        z. B. bei technischen Fehlern oder wenn der Käufer das gekaufte Objekt nicht erhält.
+        */
+        /// <summary>
+        /// RollBack the transaction if user failed to get the object paid
+        /// </summary>
+        /// <param name="transaction"></param>
+        /// <returns></returns>
+        protected bool RollBackTransaction(TransactionData transaction)
+        {
+            if (m_moneyDBService.withdrawMoney(transaction.TransUUID, transaction.Receiver, transaction.Amount))
+            {
+                if (m_moneyDBService.giveMoney(transaction.TransUUID, transaction.Sender, transaction.Amount))
+                {
+                    m_log.InfoFormat("[MONEY XMLRPC]: RollBackTransaction: Transaction {0} is successfully.", transaction.TransUUID.ToString());
+                    m_moneyDBService.updateTransactionStatus(transaction.TransUUID, (int)Status.FAILED_STATUS,
+                                                                    "The buyer failed to get the object, roll back the transaction");
+                    UserInfo senderInfo = m_moneyDBService.FetchUserInfo(transaction.Sender);
+                    UserInfo receiverInfo = m_moneyDBService.FetchUserInfo(transaction.Receiver);
+                    string senderName = "unknown user";
+                    string receiverName = "unknown user";
+                    if (senderInfo != null) senderName = senderInfo.Avatar;
+                    if (receiverInfo != null) receiverName = receiverInfo.Avatar;
+
+                    string snd_message = string.Format(m_BalanceMessageRollBack, transaction.Amount, receiverName, transaction.ObjectName);
+                    string rcv_message = string.Format(m_BalanceMessageRollBack, transaction.Amount, senderName, transaction.ObjectName);
+
+                    if (transaction.Sender != transaction.Receiver) UpdateBalance(transaction.Sender, snd_message);
+                    UpdateBalance(transaction.Receiver, rcv_message);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        #endregion
+
+
     }
 
-
 }
+// ##################     classes                ##################
+#region classes
 // Anfrage - Klassen für spezifische XML-RPC-Methoden
 public class CurrencyQuoteRequest
 {
@@ -3648,3 +3479,4 @@ public class BuyCurrencyRequest
         return Amount > 0 && !string.IsNullOrEmpty(CurrencyType);
     }
 }
+#endregion
