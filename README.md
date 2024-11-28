@@ -19,6 +19,8 @@ Windows Linux IOS DotNet 6.0 & Windows Linux IOS DotNet 8.0
 
 Everything works so far.
 
+The MoneyServer intercepts the helper messages and processes them internally.
+
      ; helper uri (for currency.php and landtool.php):
      economy = ${Const|BaseURL}:8008/
      
