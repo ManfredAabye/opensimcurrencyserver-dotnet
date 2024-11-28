@@ -35,7 +35,7 @@ namespace NSL.Certificate.Tools
             m_cacert = null;
             m_clientcrl = null;
 
-            m_log.InfoFormat("[NSL CERT VERIFY]: NSLCertificateVerify()");
+            //  m_log.InfoFormat("[NSL CERT VERIFY]: NSLCertificateVerify()");
         }
 
 
@@ -47,7 +47,7 @@ namespace NSL.Certificate.Tools
         {
             SetPrivateCA(certfile);
 
-            m_log.InfoFormat("[NSL CERT VERIFY]: NSLCertificateVerify()");
+            // m_log.InfoFormat("[NSL CERT VERIFY]: NSLCertificateVerify()");
         }
 
 
@@ -61,7 +61,7 @@ namespace NSL.Certificate.Tools
             SetPrivateCA(certfile);
             SetPrivateCRL(crlfile);
 
-            m_log.InfoFormat("[NSL CERT VERIFY]: NSLCertificateVerify()");
+            // m_log.InfoFormat("[NSL CERT VERIFY]: NSLCertificateVerify()");
         }
 
 

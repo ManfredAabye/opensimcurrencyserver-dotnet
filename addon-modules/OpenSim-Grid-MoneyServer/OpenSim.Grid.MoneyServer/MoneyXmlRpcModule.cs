@@ -17,6 +17,8 @@
 
 using log4net;
 
+using MySql.Data.MySqlClient;
+
 using Nini.Config;
 
 using NSL.Certificate.Tools;
@@ -43,7 +45,11 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Transactions;
 using System.Xml;
+
+using static Mono.Security.X509.X520;
+using static OpenMetaverse.DllmapConfigHelper;
 
 
 namespace OpenSim.Grid.MoneyServer
@@ -54,10 +60,11 @@ namespace OpenSim.Grid.MoneyServer
         #region Setup Initial
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+        private int m_realMoney = 1000; // Beispielwert oder aus der MoneyServer.ini geladen
+        private int m_gameMoney = 10000; // Beispielwert oder aus der MoneyServer.ini geladen
+
         // MoneyServer settings
         private int m_defaultBalance = 1000;
-        private int m_realMoney = 10; //# Startkapital in EURO Pseudo
-        private int m_gameMoney = 500; //# Startkapital in L$ GamingMoney
 
         private bool m_forceTransfer = false;
         private string m_bankerAvatar = "";
@@ -128,8 +135,9 @@ namespace OpenSim.Grid.MoneyServer
 
 
         /// <summary>Initializes a new instance of the <see cref="MoneyXmlRpcModule" /> class.</summary>
-        public MoneyXmlRpcModule()
+        public MoneyXmlRpcModule(string connectionString, int maxDBConnections)
         {
+            Initialise(connectionString, maxDBConnections);
         }
 
         /// <summary>Initialises the specified opensim version.</summary>
@@ -233,7 +241,7 @@ namespace OpenSim.Grid.MoneyServer
             }
             else
             {
-                m_log.Info("[MONEY XMLRPC]: Initialise: No check XMLRPC Server or CACertFilename is empty. CheckServerCert is false.");
+                m_log.Info("[MONEY XMLRPC]: CheckServerCert is false.");
             }
 
             m_sessionDic = m_moneyCore.GetSessionDic();
@@ -248,13 +256,13 @@ namespace OpenSim.Grid.MoneyServer
         /// <summary>Registers stream handlers for PHP scripts.</summary>
         private void RegisterStreamHandlers()
         {
-            m_log.Info("[MONEY XMLRPC]: Registering currency.php  handlers.");
+            //m_log.Info("[MONEY XMLRPC]: Registering currency.php  handlers.");
             m_httpServer.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", CurrencyProcessPHP));
 
-            m_log.Info("[MONEY XMLRPC]: Registering landtool.php  handlers.");
+            //m_log.Info("[MONEY XMLRPC]: Registering landtool.php  handlers.");
             m_httpServer.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", LandtoolProcessPHP));
 
-            m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers.");
+            m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers on Port: {0}", m_httpServer.Port);
         }
 
         /// <summary>Posts the initialise.</summary>
@@ -605,7 +613,7 @@ namespace OpenSim.Grid.MoneyServer
 
         private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
-            m_log.InfoFormat("[CURRENCY PROCESS PHP]: Starting...");
+            m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Process Starting...");
 
             if (httpRequest == null || httpResponse == null)
             {
@@ -646,6 +654,17 @@ namespace OpenSim.Grid.MoneyServer
 
                 m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - AgentId: {0}, CurrencyBuy: {1}, SecureSessionId: {2}", agentId, currencyBuy, secureSessionId);
 
+                string transactionID = parameters["transactionID"]?.ToString();
+                string userID = parameters["agentId"]?.ToString();
+                int amount = int.Parse(parameters["currencyBuy"]?.ToString() ?? "0");
+
+                if (string.IsNullOrEmpty(transactionID))
+                {
+                    transactionID = secureSessionId;
+                }
+
+                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - transactionID: {0}, userID: {1}, amount: {2}", transactionID, userID, amount);
+
                 if (methodName == "getCurrencyQuote")
                 {
                     // Währungsangebot abrufen
@@ -663,23 +682,11 @@ namespace OpenSim.Grid.MoneyServer
                     {
                         m_log.Info("[CURRENCY PROCESS PHP]: Purchase successful. Proceeding to credit currency.");
                         // Gutschrift durchführen
-                        bool transferSuccess = PerformMoneyTransfer("BANKER", agentId, currencyBuy);
-
-                        if (transferSuccess)
-                        {
-                            m_log.Info("[CURRENCY PROCESS PHP]: Currency credited successfully.");
-                            XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = purchaseResponse };
-                            httpResponse.StatusCode = 200;
-                            httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
-                        }
-                        else
-                        {
-                            m_log.Error("[CURRENCY PROCESS PHP]: Currency crediting failed.");
-                            Hashtable fallbackResponse = ApplyFallbackCredit(agentId);
-                            XmlRpcResponse fallbackXmlResponse = new XmlRpcResponse { Value = fallbackResponse };
-                            httpResponse.StatusCode = 200;
-                            httpResponse.RawBuffer = Encoding.UTF8.GetBytes(fallbackXmlResponse.ToString());
-                        }
+                        PerformMoneyTransfer("BANKER", agentId, currencyBuy);
+                        UpdateBalance(agentId, "Currency purchase successful.");
+                        XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = purchaseResponse };
+                        httpResponse.StatusCode = 200;
+                        httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
                     }
                     else
                     {
@@ -702,6 +709,8 @@ namespace OpenSim.Grid.MoneyServer
                 httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
         }
+
+
         private Hashtable ExtractXmlRpcParams(XmlDocument doc)
         {
             Hashtable parameters = new Hashtable();
@@ -867,47 +876,94 @@ namespace OpenSim.Grid.MoneyServer
 
             return returnval;
         }
-        private bool PerformMoneyTransfer(string senderID, string receiverID, int amount)
+        public new bool PerformMoneyTransfer(string senderID, string receiverID, int amount)
         {
-            // Hier könnte eine echte Logik zur Durchführung des Transfers implementiert werden
-            // Z.B. Datenbankoperationen, API-Aufrufe oder andere Logik
-            m_log.InfoFormat("[MONEY TRANSFER]: Transferring {0} from {1} to {2}.", amount, senderID, receiverID);
+            //m_log.InfoFormat("[MONEY TRANSFER]: Transferring {0} from {1} to {2}.", amount, senderID, receiverID);
+            try
+            {
+                MySQLSuperManager dbm = GetLockedConnection();
+                string sql = "UPDATE balances SET balance = balance - ?amount WHERE user = ?senderID; " +
+                             "UPDATE balances SET balance = balance + ?amount WHERE user = ?receiverID";
 
-            // Beispiel: Erfolgreiche Transaktion zurückgeben
-            return true; // Diese Funktion muss die echte Logik des Geldtransfers implementieren.
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?amount", amount);
+                    cmd.Parameters.AddWithValue("?senderID", senderID);
+                    cmd.Parameters.AddWithValue("?receiverID", receiverID);
+
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    bool result = (rowsAffected > 0);
+
+                    if (result)
+                    {
+                        LogTransaction(UUID.Random(), senderID, -amount);
+                        LogTransaction(UUID.Random(), receiverID, amount);
+                    }
+
+                    return result;
+                }
+            }
+            catch (Exception)
+            {
+                //m_log.ErrorFormat("[MONEY TRANSFER]: Error transferring money: {0}", ex.Message);
+                return false;
+            }
         }
 
-        private void InitializeUserCurrency(string agentId)
+        public new void InitializeUserCurrency(string agentId)
         {
             m_log.InfoFormat("[INITIALIZE USER CURRENCY]: Initializing currency for new user: {0}", agentId);
-            int realMoney = m_realMoney; // Aus der MoneyServer.ini geladen
-            int gameMoney = m_gameMoney; // Aus der MoneyServer.ini geladen
 
-            // Beispiel-Datenbankaufruf: Füge Startbeträge hinzu
-            //Mono.Addins.Database.AddCurrency(agentId, realMoney, gameMoney);
+            try
+            {
+                MySQLSuperManager dbm = GetLockedConnection();
+                string sql = "INSERT INTO balances (user, balance) VALUES (?agentId, ?realMoney), (?agentId, ?gameMoney)";
 
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?agentId", agentId);
+                    cmd.Parameters.AddWithValue("?realMoney", m_realMoney);
+                    cmd.Parameters.AddWithValue("?gameMoney", m_gameMoney);
 
-            //Mono.Addins.Database db = new Mono.Addins.Database();
-            //db.AddCurrency(agentId, realMoney, gameMoney);
+                    cmd.ExecuteNonQuery();
+                }
 
-            m_log.InfoFormat("[INITIALIZE USER CURRENCY]: User {0} initialized with {1}€ and {2}L$.", agentId, realMoney, gameMoney);
+                m_log.InfoFormat("[INITIALIZE USER CURRENCY]: User {0} initialized with {1}€ and {2}L$.", agentId, m_realMoney, m_gameMoney);
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[INITIALIZE USER CURRENCY]: Error initializing user currency: {0}", ex.Message);
+            }
         }
-        private Hashtable ApplyFallbackCredit(string agentId)
+
+        public new Hashtable ApplyFallbackCredit(string agentId)
         {
             m_log.WarnFormat("[FALLBACK CREDIT]: Applying fallback credit for user {0}", agentId);
-            return new Hashtable
+
+            try
             {
-                { "success", true },
-                { "creditedAmount", 100 },
-                { "message", "Fallback credit applied due to transaction failure." }
-            };
-        }
-        private void LoadCurrencySettings()
+                MySQLSuperManager dbm = GetLockedConnection();
+                string sql = "UPDATE balances SET balance = balance + 100 WHERE user = ?agentId";
+
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?agentId", agentId);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[FALLBACK CREDIT]: Error applying fallback credit: {0}", ex.Message);
+            }
+
+            return new Hashtable
         {
-            //m_realMoney = ConfigManager.GetInt("MoneyServer", "m_realMoney", 10); // Standard: 10€
-            //m_gameMoney = ConfigManager.GetInt("MoneyServer", "m_gameMoney", 500); // Standard: 500L$
-            m_log.InfoFormat("[LOAD CURRENCY SETTINGS]: Loaded configuration - RealMoney: {0}€, GameMoney: {1}L$", m_realMoney, m_gameMoney);
+            { "success", true },
+            { "creditedAmount", 100 },
+            { "message", "Fallback credit applied due to transaction failure." }
+        };
         }
+
         public bool ValidateTransaction(UUID transactionID, string secureCode)
         {
             // Die Methode ValidateTransfer aus IMoneyDBService verwenden
@@ -1000,20 +1056,10 @@ namespace OpenSim.Grid.MoneyServer
             }
 
             // Regular Expression für gültige E-Mail-Adressen
-            const string pattern =
-                @"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$";
+            const string pattern = @"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$";
 
             // Überprüfen, ob die E-Mail-Adresse das Muster erfüllt
             return Regex.IsMatch(email, pattern, RegexOptions.Compiled);
-        }
-        private static UUID GenerateTransactionID()
-        {
-            byte[] randomBuf = new byte[16];
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(randomBuf);
-            }
-            return new UUID(new Guid(randomBuf));
         }
 
         private Dictionary<UUID, int> balances = new Dictionary<UUID, int>();
@@ -1285,21 +1331,6 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        /*
-        handleClientLogin(XmlRpcRequest request, IPEndPoint remoteClient)
-        Zweck: Handhabt die Anmeldung eines Clients und überprüft dessen Berechtigungen.
-        Details:
-            Überprüft den SSL Common Name und liest Client-Daten aus der Anfrage.
-            Führt Validierungen für verschiedene Avatar-Typen durch (z. B. Gast, NPC, Fremd-Avatar).
-            Speichert Sitzungsdaten und initialisiert ein Benutzerkonto in der Datenbank, falls erforderlich.
-            Gibt die Währungsbilanz des Benutzers zurück.
-        Anwendung: Wird beim Einloggen eines Benutzers in das System verwendet.
-        */
-        /// <summary>
-        /// Get the user balance when user entering a parcel.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleClientLogin(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: handleClientLogin: Start.");
@@ -1503,20 +1534,7 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleClientLogout(XmlRpcRequest request, IPEndPoint remoteClient)
-        Zweck: Beendet die Sitzung eines Benutzers.
-        Details:
-            Entfernt Sitzungs- und sichere Sitzungsdaten aus internen Dictionaries.
-            Gibt eine Erfolgsantwort zurück.
-        Anwendung: Aufgerufen, wenn ein Benutzer sich abmeldet.
-        */
-        /// <summary>
-        /// handle incoming transaction
-        /// </summary>
-        /// <param name="request"></param>
-        /// <param name="remoteClient"></param>
-        /// <returns></returns>
+     
         public XmlRpcResponse handleClientLogout(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -1559,24 +1577,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleTransaction
-        Zweck:
-        Verarbeitet normale Geldtransaktionen zwischen zwei Nutzern.
-        Wichtige Schritte:
-            Authentifiziert den Absender basierend auf Sitzungsinformationen.
-            Validiert Eingabedaten wie senderID, receiverID, amount usw.
-            Erstellt eine Transaktion und speichert sie in der Datenbank.
-            Überträgt das Geld und benachrichtigt beide Parteien, falls erfolgreich.
-        Verwendung:
-        Diese Funktion wird für reguläre Geldtransfers genutzt, wie das Bezahlen eines anderen Benutzers, 
-        beispielsweise für Dienste oder virtuelle Objekte.
-        */
-        /// <summary>
-        /// handle incoming transaction
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleTransaction(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: handleTransaction:");
@@ -1708,23 +1708,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-         handleForceTransaction
-        Zweck:
-        Ermöglicht die Durchführung einer "erzwungenen" Transaktion, bei der Authentifizierungsprüfungen ignoriert werden können.
-        Wichtige Schritte:
-            Prüft, ob erzwungene Transaktionen aktiviert sind.
-            Validiert die Eingabedaten.
-            Fügt die Transaktion direkt in die Datenbank ein und führt sie durch.
-        Verwendung:
-        Diese Funktion wird in Ausnahmefällen eingesetzt, z. B. wenn ein Administrator Gelder zwischen Konten verschieben muss, ohne die üblichen Prüfungen.
-         */
-        // added by Fumi.Iseki
-        /// <summary>
-        /// handle incoming force transaction. no check senderSessionID and senderSecureSessionID
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleForceTransaction(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -1849,23 +1832,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleScriptTransaction
-        Zweck:
-        Ermöglicht Skripten das Senden von Geldtransaktionen, indem sie eine vorher festgelegte Zugriffsmethode verwenden.
-        Wichtige Schritte:
-            Verifiziert die Zugriffsbefugnis anhand eines geheimen Codes.
-            Erstellt eine Transaktion und führt sie aus.
-            Benachrichtigt die betroffenen Benutzer über die Transaktion.
-        Verwendung:
-        Wird genutzt, um Geldtransaktionen durch externe oder serverseitige Skripte durchzuführen, z. B. für automatisierte Zahlungen.
-        */
-        // added by Fumi.Iseki
-        /// <summary>
-        /// handle scripted sending money transaction.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleScriptTransaction(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: handleScriptTransaction:");
@@ -1999,23 +1965,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleAddBankerMoney
-        Zweck:
-        Erlaubt einem als "Banker" definierten Benutzer, Geld auf ein Konto hinzuzufügen.
-        Wichtige Schritte:
-            Prüft, ob der anfragende Benutzer der autorisierte "Banker" ist.
-            Fügt die Transaktion in die Datenbank ein.
-            Führt die Gutschrift auf das Zielkonto aus.
-        Verwendung:
-        Wird verwendet, um Guthaben auf Benutzerkonten hinzuzufügen, z. B. durch einen Admin oder Banker in einem virtuellen Währungssystem.
-        */
-        // added by Fumi.Iseki
-        /// <summary>
-        /// handle adding money transaction.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleAddBankerMoney(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -2120,7 +2069,9 @@ namespace OpenSim.Grid.MoneyServer
 
         public XmlRpcResponse handlePayMoneyCharge(XmlRpcRequest request, IPEndPoint remoteClient)
         {
-            m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge:");
+            m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge now.");
+            // Debug: Log request parameters
+            //m_log.DebugFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Request Parameters: {0}", request.Params[0]);
 
             GetSSLCommonName(request);
 
@@ -2144,6 +2095,9 @@ namespace OpenSim.Grid.MoneyServer
             responseData["success"] = false;
             UUID transactionUUID = UUID.Random();
 
+            // Debug: Log initial variable values
+            //m_log.DebugFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Initial Variables - senderID: {0}, receiverID: {1}, amount: {2}", senderID, receiverID, amount);
+
             // Parameter aus der Anfrage extrahieren
             if (requestData.ContainsKey("senderID")) senderID = (string)requestData["senderID"];
             if (requestData.ContainsKey("senderSessionID")) senderSessionID = (string)requestData["senderSessionID"];
@@ -2158,7 +2112,11 @@ namespace OpenSim.Grid.MoneyServer
             if (requestData.ContainsKey("objectID")) objectID = (string)requestData["objectID"];
             if (requestData.ContainsKey("objectName")) objectName = (string)requestData["objectName"];
 
+            // Debug: Log updated variable values
+            //m_log.DebugFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Updated Variables - senderID: {0}, receiverID: {1}, amount: {2}", senderID, receiverID, amount);
+
             m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Transfering money from {0} to {1}, Amount = {2}", senderID, receiverID, amount);
+
 
             // Sitzungsprüfung für SYSTEM überspringen
             if (senderID == m_bankerAvatar || senderID == "SYSTEM")
@@ -2200,6 +2158,9 @@ namespace OpenSim.Grid.MoneyServer
                 transaction.CommonName = GetSSLCommonName();
                 transaction.Description = description + " " + DateTime.UtcNow.ToString();
 
+                // Debug: Log transaction details
+                //m_log.DebugFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Transaction Details - TransUUID: {0}, Sender: {1}, Receiver: {2}, Amount: {3}", transaction.TransUUID, transaction.Sender, transaction.Receiver, transaction.Amount);
+
                 bool result = m_moneyDBService.addTransaction(transaction);
                 if (result)
                 {
@@ -2212,6 +2173,7 @@ namespace OpenSim.Grid.MoneyServer
                             if (!NotifyTransfer(transactionUUID, "Transfer failed, adding money manually.", "", ""))
                             {
                                 m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Gutschrift fehlgeschlagen, versuche manuell Geld hinzuzufügen.");
+                                
                                 // Ruft die Methode handleAddBankerMoney auf, um das Geld direkt hinzuzufügen.
                                 Hashtable addMoneyParams = new Hashtable();
                                 addMoneyParams["bankerID"] = "SYSTEM";  // Der "Banker"-ID
@@ -2251,22 +2213,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-       handleCancelTransfer
-       Zweck:
-       Ermöglicht Benutzern, eine Transaktion aktiv zu stornieren.
-       Ablauf:
-           Liest Transaktions-ID und Sicherheitscode aus der Anfrage aus.
-           Validiert den Sicherheitscode und die Transaktion.
-           Aktualisiert den Status der Transaktion auf "FAILED_STATUS".
-           Gibt eine XML-RPC-Antwort zurück, die angibt, ob die Stornierung erfolgreich war.
-       Anwendung:
-       Diese Methode wird von einem Benutzer ausgelöst, der eine Transaktion abbrechen möchte. 
-               Sie wird typischerweise über eine XML-RPC-Schnittstelle von einem Client aufgerufen.
-       */
-        /// <summary>Handles the cancel transfer.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="remoteClient">The remote client.</param>
         public XmlRpcResponse handleCancelTransfer(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -2316,20 +2262,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleGetTransaction
-        Zweck:
-        Stellt Details zu einer spezifischen Transaktion bereit.
-        Ablauf:
-            Überprüft die Sitzung des Clients.
-            Sucht die Transaktion in der Datenbank anhand der Transaktions-ID.
-            Gibt die Transaktionsdaten (Betrag, Zeit, Typ, Sender, Empfänger, Beschreibung) zurück.
-        Anwendung:
-        Wird verwendet, um Transaktionsdetails anzuzeigen, beispielsweise auf einer Benutzeroberfläche oder in einer App.
-        */
-        /// <summary>Handles the get transaction.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="remoteClient">The remote client.</param>
         public XmlRpcResponse handleGetTransaction(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -2403,21 +2335,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        // In development
-        /*
-        handleWebLogin
-        Zweck:
-        Verarbeitet das Einloggen eines Benutzers über eine Weboberfläche.
-        Ablauf:
-            Prüft, ob userID und sessionID angegeben sind.
-            Aktualisiert oder speichert die Sitzung im m_webSessionDic.
-            Gibt Erfolg zurück, wenn die Anmeldung erfolgreich war.
-        Anwendung:
-        Wird aufgerufen, wenn ein Benutzer sich über das Web einloggt.
-        */
-        /// <summary>Handles the web login.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="remoteClient">The remote client.</param>
         public XmlRpcResponse handleWebLogin(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -2456,19 +2373,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleWebLogout
-        Zweck:
-        Verarbeitet das Ausloggen eines Benutzers über eine Weboberfläche.
-        Ablauf:
-            Entfernt die Sitzung des Benutzers aus m_webSessionDic.
-            Gibt Erfolg zurück, wenn das Ausloggen erfolgreich war.
-        Anwendung:
-        Wird aufgerufen, wenn ein Benutzer sich über das Web ausloggt.
-        */
-        /// <summary>Handles the web logout.</summary>
-        /// <param name="request">The request.</param>
-        /// <param name="remoteClient">The remote client.</param>
         public XmlRpcResponse handleWebLogout(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -2506,22 +2410,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleWebGetBalance
-        Zweck:
-        Liefert den Kontostand eines Benutzers über eine Webschnittstelle.
-        Ablauf:
-            Überprüft die Sitzung des Benutzers.
-            Ruft den Kontostand aus der Datenbank ab.
-            Gibt Erfolg und den Kontostand zurück oder einen Fehler, falls etwas schiefgeht.
-        Anwendung:
-        Ermöglicht Benutzern, ihren aktuellen Kontostand einzusehen.
-        */
-        /// <summary>
-        /// Get balance method for web pages.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleWebGetBalance(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -2586,22 +2474,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleWebGetTransaction
-        Zweck:
-        Ruft Transaktionsdaten für eine Webschnittstelle ab.
-        Ablauf:
-            Überprüft die Sitzung des Benutzers.
-            Ruft Transaktionen nach Index, Zeit oder anderen Parametern aus der Datenbank ab.
-            Gibt die Transaktionsdaten zurück.
-        Anwendung:
-        Wird verwendet, um Transaktionsverläufe oder Details auf einer Weboberfläche anzuzeigen.
-        */
-        /// <summary>
-        /// Get transaction for web pages
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleWebGetTransaction(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -2689,22 +2561,6 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
-        /*
-        handleWebGetTransactionNum
-        Zweck:
-        Ermittelt die Anzahl der Transaktionen eines Benutzers für einen bestimmten Zeitraum.
-        Ablauf:
-            Überprüft die Sitzung des Benutzers.
-            Ermittelt die Anzahl der Transaktionen in der Datenbank.
-            Gibt die Anzahl oder eine Fehlermeldung zurück.
-        Anwendung:
-        Wird zur Anzeige der Anzahl von Transaktionen in einem bestimmten Zeitraum genutzt, z. B. auf Dashboards.
-        */
-        /// <summary>
-        /// Get total number of transactions for web pages.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleWebGetTransactionNum(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -2750,27 +2606,6 @@ namespace OpenSim.Grid.MoneyServer
         // ##################     helper          ##################
         #region helper
 
-        /*
-        CalculateCost
-        Berechnet die Kosten basierend auf einer Währungsmenge.
-            Beispiel:
-        return currencyAmount * m_CalculateCurrency;
-        */
-        /// <summary>
-        /// Calculates the cost based on the given currency amount.
-        /// </summary>
-        /// <param name="currencyAmount">The amount of currency.</param>
-        /// <returns>The calculated cost.</returns>
-        private int CalculateCost(int currencyAmount)
-        {
-            m_log.InfoFormat("[MONEY XML RPC MODULE]: Cost for {0} currency units: {1}", currencyAmount, currencyAmount * m_CalculateCurrency);
-            // The cost of each currency unit is calculated by multiplying the currency amount by the calculate currency value.
-            // The calculate currency value is a private field of the class.
-            // The commented line is an example of how the price per unit can be set.
-            return currencyAmount * m_CalculateCurrency;
-
-            //return 0;
-        }
 
         //Spezifische Handler OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
         public XmlRpcResponse OnMoneyTransferedHandler(XmlRpcRequest request, IPEndPoint client)
@@ -2813,16 +2648,6 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        /*
-        GetSSLCommonName(XmlRpcRequest request) und GetSSLCommonName()
-        Zweck: Extrahiert den SSL Common Name aus einer Anfrage oder gibt den gespeicherten Wert zurück.
-        Details:
-            Verwendet, um Client-Zertifikate zu validieren.
-            Sicherstellt, dass nur autorisierte Clients zugreifen können.
-        Anwendung: Wichtiger Bestandteil der Sicherheitsüberprüfung im System.
-        */
-        /// <summary>Gets the name of the SSL common.</summary>
-        /// <param name="request">The request.</param>
         public string GetSSLCommonName(XmlRpcRequest request)
         {
             if (request.Params.Count > 5)
@@ -3008,38 +2833,6 @@ namespace OpenSim.Grid.MoneyServer
             return null;
         }
 
-        private Scene LocateSceneClientIn(UUID AgentId)
-        {
-            lock (m_scenes)
-            {
-                foreach (Scene _scene in m_scenes.Values)
-                {
-                    ScenePresence tPresence = _scene.GetScenePresence(AgentId);
-                    if (tPresence != null && !tPresence.IsDeleted && !tPresence.IsChildAgent)
-                        return _scene;
-                }
-            }
-            return null;
-        }
-
-        /*
-        NotifyTransfer
-        Zweck:
-            Setzt eine begonnene Transaktion fort, nachdem sie vom Benutzer bestätigt wurde.
-            Führt die eigentliche Übertragung der Mittel zwischen Konten durch und aktualisiert den Kontostand.
-        Hauptablauf:
-            Transaktionsvalidierung: Prüft, ob die Transaktion in der Datenbank abgeschlossen ist (Status.SUCCESS_STATUS).
-            Kontostandaktualisierung: Aktualisiert den Kontostand von Sender und Empfänger.
-            Objektübergabe: Benachrichtigt andere Dienste, wenn ein virtueller Gegenstand Teil der Transaktion ist.
-        Anwendung:
-        Wird intern von der Anwendung aufgerufen, nachdem eine Transaktion erfolgreich autorisiert wurde.
-        */
-        //  added by Fumi.Iseki
-        /// <summary>
-        /// Continue transaction with no confirm.
-        /// </summary>
-        /// <param name="transactionUUID"></param>
-        /// <returns></returns>
         public bool NotifyTransfer(UUID transactionUUID, string msg2sender, string msg2receiver, string objectName)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: User has accepted the transaction, now continue with the transaction");
@@ -3051,13 +2844,12 @@ namespace OpenSim.Grid.MoneyServer
                     TransactionData transaction = m_moneyDBService.FetchTransaction(transactionUUID);
                     if (transaction != null && transaction.Status == (int)Status.SUCCESS_STATUS)
                     {
-                        m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction Type = {0}", transaction.Type);
-                        m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Payment finished successfully, now update balance {0}", transactionUUID.ToString());
+                        //m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Transaction Type = {0}", transaction.Type);
+                        //m_log.InfoFormat("[MONEY XMLRPC]: NotifyTransfer: Payment finished successfully, now update balance {0}", transactionUUID.ToString());
 
                         bool updateSender = true;
                         bool updateReceiv = true;
                         if (transaction.Sender == transaction.Receiver) updateSender = false;
-                        //if (transaction.Type==(int)TransactionType.UploadCharge) return true;
                         if (transaction.Type == (int)TransactionType.UploadCharge) updateReceiv = false;
 
                         if (updateSender)
@@ -3144,23 +2936,6 @@ namespace OpenSim.Grid.MoneyServer
             return false;
         }
 
-        /*
-       handleGetBalance
-       Zweck:
-           Ermittelt den Kontostand eines Benutzers.
-       Hauptablauf:
-           Parameterprüfung: Die Funktion prüft, ob alle notwendigen Parameter (clientUUID, clientSessionID, clientSecureSessionID) bereitgestellt werden.
-           Authentifizierung: Verifiziert die Sitzung anhand der bereitgestellten IDs.
-           Kontostandabfrage: Ruft den Kontostand des Benutzers aus der Datenbank ab und gibt diesen zurück.
-       Anwendung:
-       Wird aufgerufen, wenn ein Client den aktuellen Kontostand abfragen möchte. Beispielaufruf:
-
-       */
-        /// <summary>
-        /// Get the user balance.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
         public XmlRpcResponse handleGetBalance(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             GetSSLCommonName(request);
@@ -3215,24 +2990,7 @@ namespace OpenSim.Grid.MoneyServer
             responseData["description"] = "Session check failure, please re-login";
             return response;
         }
-
-        /*
-        genericCurrencyXMLRPCRequest
-        Zweck:
-            Generische Funktion zur Kommunikation mit externen Diensten über XML-RPC.
-        Hauptablauf:
-            Parameterprüfung: Prüft, ob die Anforderung gültig ist.
-            Senden der Anforderung: Erstellt eine XML-RPC-Anfrage und sendet sie an die angegebene URI.
-            Fehlerbehandlung: Gibt bei Fehlschlägen einen Fehler-Hash zurück.
-        Anwendung:
-        Diese Funktion wird von anderen Funktionen verwendet, um mit entfernten Diensten zu kommunizieren.
-        */
-        /// <summary>   
-        /// Generic XMLRPC client abstraction
-        /// </summary>   
-        /// <param name="ReqParams">Hashtable containing parameters to the method</param>   
-        /// <param name="method">Method to invoke</param>   
-        /// <returns>Hashtable with success=>bool and other values</returns>   
+  
         private Hashtable genericCurrencyXMLRPCRequest(Hashtable reqParams, string method, string uri)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: genericCurrencyXMLRPCRequest: to {0}", uri);
@@ -3289,20 +3047,6 @@ namespace OpenSim.Grid.MoneyServer
             return moneyRespData;
         }
 
-        /*
-        UpdateBalance
-        Zweck:
-            Aktualisiert den Kontostand eines Benutzers und benachrichtigt ihn optional mit einer Nachricht.
-        Hauptablauf:
-            Sitzungsinformationen abrufen: Sammelt Sitzungsinformationen (clientSessionID, clientSecureSessionID).
-            Benachrichtigung: Sendet eine XML-RPC-Anforderung an den entsprechenden Simulator.
-        Anwendung:
-        Wird intern aufgerufen, wenn der Kontostand nach einer Transaktion geändert wurde.
-        */
-        /// <summary>
-        /// Update the client balance.We don't care about the result.
-        /// </summary>
-        /// <param name="userID"></param>
         private void UpdateBalance(string userID, string message)
         {
             string sessionID = string.Empty;
@@ -3329,26 +3073,6 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        /*
-        RollBackTransaction
-        Zweck:
-        Diese Funktion führt einen "Rollback" (Rückgängig machen) einer fehlgeschlagenen Transaktion durch. 
-        Wenn ein Fehler bei der Abwicklung auftritt, wird das Geld vom Empfänger zurück zum Absender überwiesen.
-        Ablauf:
-            Prüft, ob der Betrag vom Empfängerkonto erfolgreich abgezogen wurde.
-            Überweist den Betrag zurück auf das Absenderkonto.
-            Aktualisiert den Transaktionsstatus auf "FAILED_STATUS".
-            Sendet Benachrichtigungen an beide Parteien.
-            Gibt true zurück, wenn der Rollback erfolgreich war, sonst false.
-        Anwendung:
-        Diese Funktion wird aufgerufen, wenn eine Transaktion abgebrochen werden muss, 
-        z. B. bei technischen Fehlern oder wenn der Käufer das gekaufte Objekt nicht erhält.
-        */
-        /// <summary>
-        /// RollBack the transaction if user failed to get the object paid
-        /// </summary>
-        /// <param name="transaction"></param>
-        /// <returns></returns>
         protected bool RollBackTransaction(TransactionData transaction)
         {
             if (m_moneyDBService.withdrawMoney(transaction.TransUUID, transaction.Receiver, transaction.Amount))
@@ -3407,37 +3131,6 @@ public class LandPurchaseRequest
     public string SecureSessionId { get; set; }
 }
 
-public abstract class XmlRpcBaseRequest
-{
-    // Gemeinsame Eigenschaften oder Methoden können hier definiert werden
-    string[] AcceptTypes { get; }
-    Encoding ContentEncoding { get; }
-    long ContentLength { get; }
-    long ContentLength64 { get; }
-    string ContentType { get; }
-    bool HasEntityBody { get; }
-    NameValueCollection Headers { get; }
-    string HttpMethod { get; }
-    Stream InputStream { get; }
-    bool IsSecured { get; }
-    bool KeepAlive { get; }
-    NameValueCollection QueryString { get; }
-    Hashtable Query { get; }
-    HashSet<string> QueryFlags { get; }
-    Dictionary<string, string> QueryAsDictionary { get; }
-    string RawUrl { get; }
-    IPEndPoint RemoteIPEndPoint { get; }
-    IPEndPoint LocalIPEndPoint { get; }
-    IPEndPoint RemoteEndPoint { get; }
-    Uri Url { get; }
-    string UriPath { get; }
-    string UserAgent { get; }
-    double ArrivalTS { get; }
-}
-
-/// <summary>
-/// Represents a request to buy currency.
-/// </summary>
 public class BuyCurrencyRequest
 {
     /// <summary>
@@ -3457,22 +3150,10 @@ public class BuyCurrencyRequest
     public int ViewerMinorVersion { get; set; }
     public int ViewerPatchVersion { get; set; }
 
-    /// <summary>
-    /// Gets or sets the amount of currency to buy.
-    /// </summary>
-    /// <value>The amount of currency to buy.</value>
     public decimal Amount { get; set; }
 
-    /// <summary>
-    /// Gets or sets the currency type.
-    /// </summary>
-    /// <value>The currency type.</value>
     public string CurrencyType { get; set; }
 
-    /// <summary>
-    /// Validates the request.
-    /// </summary>
-    /// <returns><c>true</c> if the request is valid; otherwise, <c>false</c>.</returns>
     public bool IsValid()
     {
         // Add validation logic here, e.g., check for null or empty values

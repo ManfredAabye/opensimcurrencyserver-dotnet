@@ -15,17 +15,22 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using System;
 using System.Threading;
 
 namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
 {
-    // This bit of code is from OpenSim.Data.MySQLSuperManager
     public class MySQLSuperManager
     {
         public bool Locked;
         private readonly Mutex m_lock = new Mutex(false);
         public MySQLMoneyManager Manager;
         public string Running;
+
+        public MySQLSuperManager(string connectionString)
+        {
+            Manager = new MySQLMoneyManager(connectionString);
+        }
 
         /// <summary>Gets the lock.</summary>
         public void GetLock()
@@ -34,11 +39,24 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
             m_lock.WaitOne();
         }
 
-        /// <summary>Releases this instance.</summary>
         public void Release()
         {
-            m_lock.ReleaseMutex();
-            Locked = false;
+            try
+            {
+                m_lock.ReleaseMutex();
+            }
+            catch (Exception ex)
+            {
+                // Log the exception
+                Console.WriteLine($"An exception occurred while releasing the mutex: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                Locked = false;
+            }
         }
     }
+
+
 }

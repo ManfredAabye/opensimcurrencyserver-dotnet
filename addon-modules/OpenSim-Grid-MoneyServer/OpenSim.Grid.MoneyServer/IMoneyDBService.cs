@@ -20,6 +20,7 @@ using OpenMetaverse;
 
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 
+using System.Collections;
 using System.Collections.Generic;
 
 namespace OpenSim.Grid.MoneyServer
@@ -29,112 +30,118 @@ namespace OpenSim.Grid.MoneyServer
     /// </summary>
     public interface IMoneyDBService
     {
-        /// <summary>Gets the balance.</summary>
-        /// <param name="userID">The user identifier.</param>
+        Hashtable ApplyFallbackCredit(string agentId);
+
+        void InitializeUserCurrency(string agentId);
+
+        bool PerformMoneyTransfer(string senderID, string receiverID, int amount);
+
+        /// <summary>Ruft den Kontostand ab.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
         int getBalance(string userID);
 
-        /// <summary>Withdraws the money.</summary>
-        /// <param name="transactionID">The transaction identifier.</param>
-        /// <param name="senderID">The sender identifier.</param>
-        /// <param name="amount">The amount.</param>
+        /// <summary>Zieht Geld ab.</summary>
+        /// <param name="transactionID">Die Transaktions-ID.</param>
+        /// <param name="senderID">Die Absender-ID.</param>
+        /// <param name="amount">Der Betrag.</param>
         bool withdrawMoney(UUID transactionID, string senderID, int amount);
 
-        /// <summary>Gives the money.</summary>
-        /// <param name="transactionID">The transaction identifier.</param>
-        /// <param name="receiverID">The receiver identifier.</param>
-        /// <param name="amount">The amount.</param>
+        /// <summary>Gibt Geld.</summary>
+        /// <param name="transactionID">Die Transaktions-ID.</param>
+        /// <param name="receiverID">Die Empfänger-ID.</param>
+        /// <param name="amount">Der Betrag.</param>
         bool giveMoney(UUID transactionID, string receiverID, int amount);
 
-        /// <summary>Buys money for a user.</summary>
-        /// <param name="transactionID">The transaction identifier.</param>
-        /// <param name="userID">The user identifier.</param>
-        /// <param name="amount">The amount to buy.</param>
-        /// <returns>True if the purchase was successful, false otherwise.</returns>
+        /// <summary>Kauft Geld für einen Benutzer.</summary>
+        /// <param name="transactionID">Die Transaktions-ID.</param>
+        /// <param name="userID">Die Benutzer-ID.</param>
+        /// <param name="amount">Der zu kaufende Betrag.</param>
+        /// <returns>True, wenn der Kauf erfolgreich war, andernfalls false.</returns>
         bool BuyMoney(UUID transactionID, string userID, int amount);
 
-        bool BuyCurrency(int amount, int cost);
+        bool BuyCurrency(string userID, int amount);
 
-        /// <summary>Adds the transaction.</summary>
-        /// <param name="transaction">The transaction.</param>
+        /// <summary>Fügt die Transaktion hinzu.</summary>
+        /// <param name="transaction">Die Transaktion.</param>
         bool addTransaction(TransactionData transaction);
 
-        /// <summary>Adds the user.</summary>
-        /// <param name="userID">The user identifier.</param>
-        /// <param name="balance">The balance.</param>
-        /// <param name="status">The status.</param>
-        /// <param name="type">The type.</param>
+        /// <summary>Fügt den Benutzer hinzu.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
+        /// <param name="balance">Der Kontostand.</param>
+        /// <param name="status">Der Status.</param>
+        /// <param name="type">Der Typ.</param>
         bool addUser(string userID, int balance, int status, int type);
 
-        /// <summary>Updates the transaction status.</summary>
-        /// <param name="transactionID">The transaction identifier.</param>
-        /// <param name="status">The status.</param>
-        /// <param name="description">The description.</param>
+        /// <summary>Aktualisiert den Transaktionsstatus.</summary>
+        /// <param name="transactionID">Die Transaktions-ID.</param>
+        /// <param name="status">Der Status.</param>
+        /// <param name="description">Die Beschreibung.</param>
         bool updateTransactionStatus(UUID transactionID, int status, string description);
 
-        /// <summary>Sets the trans expired.</summary>
-        /// <param name="deadTime">The dead time.</param>
+        /// <summary>Setzt die Transaktion als abgelaufen.</summary>
+        /// <param name="deadTime">Die Ablaufzeit.</param>
         bool SetTransExpired(int deadTime);
 
-        /// <summary>Validates the transfer.</summary>
-        /// <param name="secureCode">The secure code.</param>
-        /// <param name="transactionID">The transaction identifier.</param>
+        /// <summary>Validiert die Überweisung.</summary>
+        /// <param name="secureCode">Der Sicherheitscode.</param>
+        /// <param name="transactionID">Die Transaktions-ID.</param>
         bool ValidateTransfer(string secureCode, UUID transactionID);
 
-        /// <summary>Fetches the transaction.</summary>
-        /// <param name="transactionID">The transaction identifier.</param>
+        /// <summary>Ruft die Transaktion ab.</summary>
+        /// <param name="transactionID">Die Transaktions-ID.</param>
         TransactionData FetchTransaction(UUID transactionID);
 
-        /// <summary>Fetches the transaction.</summary>
-        /// <param name="userID">The user identifier.</param>
-        /// <param name="startTime">The start time.</param>
-        /// <param name="endTime">The end time.</param>
-        /// <param name="lastIndex">The last index.</param>
+        /// <summary>Ruft die Transaktion ab.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
+        /// <param name="startTime">Die Startzeit.</param>
+        /// <param name="endTime">Die Endzeit.</param>
+        /// <param name="lastIndex">Der letzte Index.</param>
         TransactionData FetchTransaction(string userID, int startTime, int endTime, int lastIndex);
 
-        /// <summary>Gets the transaction number.</summary>
-        /// <param name="userID">The user identifier.</param>
-        /// <param name="startTime">The start time.</param>
-        /// <param name="endTime">The end time.</param>
+        /// <summary>Ruft die Anzahl der Transaktionen ab.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
+        /// <param name="startTime">Die Startzeit.</param>
+        /// <param name="endTime">Die Endzeit.</param>
         int getTransactionNum(string userID, int startTime, int endTime);
 
-        /// <summary>Does the transfer.</summary>
-        /// <param name="transactionUUID">The transaction UUID.</param>
+        /// <summary>Führt die Überweisung durch.</summary>
+        /// <param name="transactionUUID">Die Transaktions-UUID.</param>
         bool DoTransfer(UUID transactionUUID);
 
-        /// <summary>Does the add money.</summary>
-        /// <param name="transactionUUID">The transaction UUID.</param>
-        bool DoAddMoney(UUID transactionUUID);      // Added by Fumi.Iseki
+        /// <summary>Führt die Geldaufstockung durch.</summary>
+        /// <param name="transactionUUID">Die Transaktions-UUID.</param>
+        bool DoAddMoney(UUID transactionUUID);  // Hinzugefügt von Fumi.Iseki
 
-        /// <summary>Tries the add user information.</summary>
-        /// <param name="user">The user.</param>
+        /// <summary>Versucht, Benutzerinformationen hinzuzufügen.</summary>
+        /// <param name="user">Der Benutzer.</param>
         bool TryAddUserInfo(UserInfo user);
 
-        /// <summary>Fetches the user information.</summary>
-        /// <param name="userID">The user identifier.</param>
+        /// <summary>Ruft die Benutzerinformationen ab.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
         UserInfo FetchUserInfo(string userID);
 
-        /// <summary>Checks if a user exists.</summary>
-        /// <param name="userID">The user identifier.</param>
+        /// <summary>Überprüft, ob ein Benutzer existiert.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
         bool UserExists(string userID);
 
-        /// <summary>Updates user information.</summary>
-        /// <param name="userID">The user identifier.</param>
-        /// <param name="updatedInfo">The updated user information.</param>
+        /// <summary>Aktualisiert die Benutzerinformationen.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
+        /// <param name="updatedInfo">Die aktualisierten Benutzerinformationen.</param>
         bool UpdateUserInfo(string userID, UserInfo updatedInfo);
 
-        /// <summary>Deletes a user from the database.</summary>
-        /// <param name="userID">The user identifier.</param>
+        /// <summary>Löscht einen Benutzer aus der Datenbank.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
         bool DeleteUser(string userID);
 
-        /// <summary>Logs transaction-related errors or changes for troubleshooting.</summary>
-        /// <param name="transactionID">The transaction identifier.</param>
-        /// <param name="errorMessage">The error message or change note.</param>
+        /// <summary>Protokolliert transaktionsbezogene Fehler oder Änderungen zur Fehlerbehebung.</summary>
+        /// <param name="transactionID">Die Transaktions-ID.</param>
+        /// <param name="errorMessage">Die Fehlermeldung oder Änderungshinweis.</param>
         void LogTransactionError(UUID transactionID, string errorMessage);
 
-        /// <summary>Gets a list of transactions for a user within a specified time frame.</summary>
-        /// <param name="userID">The user identifier.</param>
-        /// <param name="startTime">The start time.</param>
-        /// <param name="endTime">The end time.</param>
+    /// <summary>Ruft eine Liste der Transaktionen für einen Benutzer innerhalb eines bestimmten Zeitrahmens ab.</summary>
+    /// <param name="userID">Die Benutzer-ID.</param>
+    /// <param name="startTime">Die Startzeit.</param>
+    /// <param name="endTime">Die Endzeit.</param>
         IEnumerable<TransactionData> GetTransactionHistory(string userID, int startTime, int endTime);
     }
 }

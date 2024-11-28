@@ -39,16 +39,9 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
         private int userinfo_rev = 0;
 
         private string connectString;
-        private MySqlConnection dbcon;
+        public MySqlConnection dbcon;
 
 
-        /// <summary>Initializes a new instance of the <see cref="MySQLMoneyManager" /> class.</summary>
-        /// <param name="hostname">The hostname.</param>
-        /// <param name="database">The database.</param>
-        /// <param name="username">The username.</param>
-        /// <param name="password">The password.</param>
-        /// <param name="cpooling">The cpooling.</param>
-        /// <param name="port">The port.</param>
         public MySQLMoneyManager(string hostname, string database, string username, string password, string cpooling, string port)
         {
             var requiredParameters = new[] { hostname, database, username, password, cpooling, port };
@@ -62,31 +55,11 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
             Initialise(connectionString);
         }
 
-        /// <summary>Initializes a new instance of the <see cref="MySQLMoneyManager" /> class.</summary>
-        /// <param name="connect">The connect.</param>
         public MySQLMoneyManager(string connect)
         {
             Initialise(connect);
         }
 
-
-        /// <summary>Initialises the specified connect.</summary>
-        /// <param name="connect">The connect.</param>
-        /// <exception cref="Amib.Threading.Internal.WorkItem.WorkItemResult.Exception">
-        /// [MONEY MANAGER]: Connection error while using connection string ["+connectString+"]
-        /// or
-        /// [MONEY MANAGER]: Error initialising MySql Database: " + e.ToString()
-        /// or
-        /// [MONEY MANAGER]: Error creating balances table: " + e.ToString()
-        /// or
-        /// [MONEY MANAGER]: Error creating userinfo table: " + e.ToString()
-        /// or
-        /// [MONEY MANAGER]: Error creating transactions table: " + e.ToString()
-        /// or
-        /// [MONEY MANAGER]: Error creating totalsales table: " + e.ToString()
-        /// or
-        /// [MONEY MANAGER]: Error checking or creating tables: " + e.ToString()
-        /// </exception>
         private void Initialise(string connect)
         {
             try
@@ -959,9 +932,6 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
         }
 
 
-        /// <summary>
-        /// Reconnect to the database
-        /// </summary>
         public void Reconnect()
         {
             m_log.Info("[MONEY MANAGER]: Reconnecting database");
@@ -1178,23 +1148,42 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
             bool bRet = false;
             MySqlCommand cmd = null;
 
-            sql = "BEGIN;";
-            sql += "UPDATE " + Table_of_Transactions + "," + Table_of_Balances;
-            sql += " SET balance = balance + ?amount, " + Table_of_Transactions + ".status = ?status ";
-            sql += " WHERE UUID = ?tranid AND user = ?userid;";
-            sql += "COMMIT;";
+            try
+            {
+                sql = "BEGIN;";
+                sql += "UPDATE Transactions, Balances";
+                sql += " SET balance = balance + ?amount, Transactions.status = ?status ";
+                sql += " WHERE Transactions.UUID = ?tranid AND Balances.user = ?userid;";
+                sql += "COMMIT;";
 
-            cmd = new MySqlCommand(sql, dbcon);
-            cmd.Parameters.AddWithValue("?amount", amount);
-            cmd.Parameters.AddWithValue("?userid", userID);
-            cmd.Parameters.AddWithValue("?status", (int)Status.SUCCESS_STATUS); //Success
-            cmd.Parameters.AddWithValue("?tranid", transactionID.ToString());
+                cmd = new MySqlCommand(sql, dbcon);
+                cmd.Parameters.AddWithValue("?amount", amount);
+                cmd.Parameters.AddWithValue("?userid", userID);
+                cmd.Parameters.AddWithValue("?status", (int)Status.SUCCESS_STATUS);
+                cmd.Parameters.AddWithValue("?tranid", transactionID.ToString());
 
-            if (cmd.ExecuteNonQuery() > 0) bRet = true;
+                if (cmd.ExecuteNonQuery() > 0)
+                {
+                    bRet = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[BuyMoney]: Exception occurred during SQL execution: {0}", ex.Message);
+            }
+            finally
+            {
+                if (cmd != null)
+                {
+                    cmd.Dispose();
+                }
+            }
 
-            cmd.Dispose();
+            m_log.InfoFormat("[BuyMoney]: SQL command executed successfully: {0}", bRet);
+
             return bRet;
         }
+
 
         /// <summary>Initializes the total sales table.</summary>
         private void initTotalSalesTable()

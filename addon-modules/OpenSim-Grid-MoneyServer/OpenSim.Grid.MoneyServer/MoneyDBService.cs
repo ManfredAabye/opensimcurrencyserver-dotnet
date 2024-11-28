@@ -16,16 +16,18 @@
  */
 
 using log4net;
+using MySql.Data.MySqlClient;
 
+using Mysqlx.Crud;
+using Mysqlx.Notice;
 using OpenMetaverse;
-
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using OpenSim.Modules.Currency;
-
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
-
 
 namespace OpenSim.Grid.MoneyServer
 {
@@ -41,90 +43,125 @@ namespace OpenSim.Grid.MoneyServer
 
         public int m_lastConnect = 0;
 
-
-        /// <summary>Initializes a new instance of the <see cref="MoneyDBService" /> class.</summary>
-        /// <param name="connect">The connect.</param>
         public MoneyDBService(string connect)
         {
             m_connect = connect;
             Initialise(m_connect, 10);
         }
 
-
-        /// <summary>Initializes a new instance of the <see cref="MoneyDBService" /> class.</summary>
         public MoneyDBService()
         {
         }
 
+        public readonly object connectionLock = new object();
 
-        /// <summary>Initialises the specified connection string.</summary>
-        /// <param name="connectionString">The connection string.</param>
-        /// <param name="maxDBConnections">The maximum database connections.</param>
-        /// <exception cref="Amib.Threading.Internal.WorkItem.WorkItemResult.Exception">Failed to initialise MySql database</exception>
         public void Initialise(string connectionString, int maxDBConnections)
         {
-            m_connect = connectionString;
-            m_maxConnections = maxDBConnections;
-            if (connectionString != string.Empty)
+            lock (connectionLock)
             {
-                for (int i = 0; i < m_maxConnections; i++)
+                if (maxDBConnections <= 0)
                 {
-                    //m_log.Info("Connecting to DB... [" + i + "]");
-                    MySQLSuperManager msm = new MySQLSuperManager();
-                    msm.Manager = new MySQLMoneyManager(connectionString);
-                    m_dbconnections.Add(i, msm);
+                    throw new ArgumentException("maxDBConnections must be greater than zero", nameof(maxDBConnections));
+                }
+
+                //m_log.InfoFormat("[Initialise]: Setting m_maxConnections to {0}", maxDBConnections);
+                m_connect = connectionString;
+                m_maxConnections = maxDBConnections;
+
+                m_log.InfoFormat("[Initialise]: m_maxConnections is now {0}", m_maxConnections);
+
+                if (connectionString != string.Empty)
+                {
+                    for (int i = 0; i < m_maxConnections; i++)
+                    {
+                        //m_log.Info("Connecting to DB... [" + i + "]");
+                        MySQLSuperManager msm = new MySQLSuperManager(connectionString);
+                        m_dbconnections.Add(i, msm);
+                    }
+                }
+                else
+                {
+                    m_log.Error("[MONEY DB]: Connection string is null, initialise database failed");
+                    throw new Exception("Failed to initialise MySql database");
                 }
             }
-            else
+        }
+        public MySQLSuperManager GetLockedConnection()
+        {
+            lock (connectionLock)
             {
-                m_log.Error("[MONEY DB]: Connection string is null, initialise database failed");
-                throw new Exception("Failed to initialise MySql database");
+                //m_log.InfoFormat("[GetLockedConnection]: m_maxConnections is {0}", m_maxConnections);
+                if (m_maxConnections == 0)
+                {
+                    throw new InvalidOperationException("m_maxConnections cannot be zero.");
+                }
+
+                int lockedCons = 0;
+                while (true)
+                {
+                    m_lastConnect++;
+                    //m_log.DebugFormat("GetLockedConnection: m_lastConnect incremented to {0}", m_lastConnect);
+
+                    if (m_lastConnect == int.MaxValue)
+                    {
+                        m_lastConnect = 0;
+                        //m_log.Debug("GetLockedConnection: m_lastConnect overflow, resetting to 0");
+                    }
+
+                    int index = m_lastConnect % m_maxConnections;
+                    if (!m_dbconnections.ContainsKey(index))
+                    {
+                        m_log.ErrorFormat("GetLockedConnection: Invalid connection index {0}", index);
+                        throw new KeyNotFoundException($"The given key '{index}' was not present in the dictionary");
+                    }
+
+                    MySQLSuperManager msm = m_dbconnections[index];
+                    //m_log.DebugFormat("GetLockedConnection: Checking connection {0} for lock", msm);
+                    if (!msm.Locked)
+                    {
+                        msm.GetLock();
+                        //m_log.DebugFormat("GetLockedConnection: Connection {0} locked successfully", msm);
+                        return msm;
+                    }
+
+                    lockedCons++;
+                    //m_log.DebugFormat("GetLockedConnection: Connection {0} is locked, trying next one. lockedCons: {1}", msm, lockedCons);
+
+                    if (lockedCons > m_maxConnections)
+                    {
+                        lockedCons = 0;
+                        System.Threading.Thread.Sleep(2000);
+                        m_log.Warn("GetLockedConnection: All connections are in use. Probable cause: Something didn't release a mutex properly, or high volume of requests inbound.");
+                    }
+                }
             }
         }
 
-
-        /// <summary>Reconnects this instance.</summary>
         public void Reconnect()
         {
+            //m_log.Debug("Reconnect attempt started.");
+
+            if (m_maxConnections <= 0)
+            {
+                throw new InvalidOperationException("m_maxConnections must be greater than zero.");
+            }
+
             for (int i = 0; i < m_maxConnections; i++)
             {
                 MySQLSuperManager msm = m_dbconnections[i];
-                msm.Manager.Reconnect();
-            }
-        }
-
-
-        /// <summary>Gets the locked connection.</summary>
-        private MySQLSuperManager GetLockedConnection()
-        {
-            int lockedCons = 0;
-            while (true)
-            {
-                m_lastConnect++;
-
-                // Overflow protection
-                if (m_lastConnect == int.MaxValue) m_lastConnect = 0;
-
-                MySQLSuperManager msm = m_dbconnections[m_lastConnect % m_maxConnections];
-                if (!msm.Locked)
+                try
                 {
-                    msm.GetLock();
-                    return msm;
+                    msm.Manager.Reconnect();
+                    //m_log.DebugFormat("Reconnected to database connection {0} successfully.", i);
                 }
-
-                lockedCons++;
-                if (lockedCons > m_maxConnections)
+                catch (Exception ex)
                 {
-                    lockedCons = 0;
-                    System.Threading.Thread.Sleep(1000); // Wait some time before searching them again.
-                    m_log.Debug("WARNING: All threads are in use. Probable cause: Something didnt release a mutex properly, or high volume of requests inbound.");
+                    m_log.ErrorFormat("Failed to reconnect to database connection {0}: {1}", i, ex.Message);
                 }
             }
+            //m_log.Debug("Reconnect attempt completed.");
         }
-
-
-        /// <summary>Gets the balance.</summary>
-        /// <param name="userID">The user identifier.</param>
+         
         public int getBalance(string userID)
         {
             MySQLSuperManager dbm = GetLockedConnection();
@@ -150,7 +187,6 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
-
 
         /// <summary>Withdraws the money.</summary>
         /// <param name="transactionID">The transaction identifier.</param>
@@ -180,86 +216,185 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
-
-
-        /// <summary>Gives the money.</summary>
-        /// <param name="transactionID">The transaction identifier.</param>
-        /// <param name="receiverID">The receiver identifier.</param>
-        /// <param name="amount">The amount.</param>
         public bool giveMoney(UUID transactionID, string receiverID, int amount)
         {
             MySQLSuperManager dbm = GetLockedConnection();
+            //m_log.Debug("giveMoney: Got locked connection");
+
+            //m_log.DebugFormat("giveMoney: Trying to give {0} units to {1} with transaction ID {2}", amount, receiverID, transactionID);          
 
             try
             {
-                return dbm.Manager.giveMoney(transactionID, receiverID, amount);
+                //m_log.Debug("giveMoney: Trying to execute giveMoney on database");
+                bool result = dbm.Manager.giveMoney(transactionID, receiverID, amount);
+                //m_log.DebugFormat("giveMoney: giveMoney on database returned {0}", result);
+                return result;
             }
             catch (MySql.Data.MySqlClient.MySqlException e)
             {
-                e.ToString();
+                m_log.ErrorFormat("giveMoney: MySqlException caught: {0}", e.Message);
                 dbm.Manager.Reconnect();
+                //m_log.Debug("giveMoney: Reconnected to database");
                 return dbm.Manager.giveMoney(transactionID, receiverID, amount);
             }
             catch (Exception e)
             {
-                m_log.Error(e);
+                m_log.ErrorFormat("giveMoney: Exception caught: {0}", e.Message);
                 return false;
             }
             finally
             {
                 dbm.Release();
+                //m_log.Debug("giveMoney: Released connection");
             }
         }
 
         public bool BuyMoney(UUID transactionID, string userID, int amount)
         {
+            //m_log.DebugFormat("[BuyMoney]: Start - transactionID: {0}, userID: {1}, amount: {2}", transactionID, userID, amount);
+
+            MySQLSuperManager dbm = GetLockedConnection();
+            string sql = "UPDATE balances SET balance = balance + ?amount WHERE user = ?userID";
+
+            try
+            {
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?amount", amount);
+                    cmd.Parameters.AddWithValue("?userID", userID);
+
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    bool result = (rowsAffected > 0);
+
+                    if (result)
+                    {
+                        LogTransaction(transactionID, userID, amount);
+                    }
+
+                    //m_log.DebugFormat("[BuyMoney]: End - transactionID: {0}, userID: {1}, amount: {2}, result: {3}", transactionID, userID, amount, result);
+                    return result;
+                }
+            }
+            catch (MySql.Data.MySqlClient.MySqlException e)
+            {
+                m_log.ErrorFormat("[BuyMoney]: SQL Exception - {0}", e.Message);
+                dbm.Manager.Reconnect();
+
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?amount", amount);
+                    cmd.Parameters.AddWithValue("?userID", userID);
+
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    bool result = (rowsAffected > 0);
+
+                    if (result)
+                    {
+                        LogTransaction(transactionID, userID, amount);
+                    }
+
+                    //m_log.DebugFormat("[BuyMoney]: End after Reconnect - transactionID: {0}, userID: {1}, amount: {2}, result: {3}", transactionID, userID, amount, result);
+                    return result;
+                }
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[BuyMoney]: General Exception - {0}", e.Message);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+                //m_log.Debug("[BuyMoney]: Connection released");
+            }
+        }
+
+        public void LogTransaction(UUID transactionID, string userID, int amount)
+        {
+            //string sql = "INSERT INTO transactions (transactionID, userID, amount, timestamp) VALUES (?transactionID, ?userID, ?amount, ?timestamp)";
+            string sql = "INSERT INTO transactions (userID, amount, timestamp) VALUES (?userID, ?amount, ?timestamp)";
+
             MySQLSuperManager dbm = GetLockedConnection();
 
             try
             {
-                return dbm.Manager.BuyMoney(transactionID, userID, amount);
-            }
-            catch (MySql.Data.MySqlClient.MySqlException e)
-            {
-                e.ToString();
-                dbm.Manager.Reconnect();
-                return dbm.Manager.BuyMoney(transactionID, userID, amount);
-            }
-            catch (Exception e)
-            {
-                m_log.Error(e);
-                return false;
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    //cmd.Parameters.AddWithValue("?transactionID", transactionID.ToString());
+                    cmd.Parameters.AddWithValue("?userID", userID);
+                    cmd.Parameters.AddWithValue("?amount", amount);
+                    cmd.Parameters.AddWithValue("?timestamp", DateTime.UtcNow);
+
+                    cmd.ExecuteNonQuery();
+                }
             }
             finally
             {
                 dbm.Release();
             }
         }
-        public bool BuyCurrency(int amount, int currencyType)
+
+
+        public bool BuyCurrency(string userID, int amount)
         {
-            if (amount <= 0)
+            MySQLSuperManager dbm = GetLockedConnection();
+
+
+            TransactionData transaction = new TransactionData();
+            transaction.TransUUID = UUID.Random();
+            transaction.Sender = UUID.Zero.ToString();  // System sender
+            transaction.Receiver = userID;
+            transaction.Amount = amount;
+            transaction.ObjectUUID = UUID.Zero.ToString();
+            transaction.ObjectName = string.Empty;
+            transaction.RegionHandle = string.Empty;
+            transaction.Type = (int)TransactionType.BuyMoney; // Angenommen, BuyMoney ist ein gültiger Transaktionstyp ???
+            transaction.Time = (int)((DateTime.UtcNow.Ticks - TicksToEpoch) / 10000000);
+            transaction.Status = (int)Status.PENDING_STATUS;
+            transaction.SecureCode = UUID.Random().ToString();
+            transaction.CommonName = string.Empty;
+            transaction.Description = "BuyCurrency " + DateTime.UtcNow.ToString();
+
+            bool ret = addTransaction(transaction);
+            if (!ret) return false;
+                       
+
+            try
             {
-                throw new ArgumentException("Amount must be greater than zero", nameof(amount));
+                // Füge Geld dem Benutzerkonto hinzu
+                ret = giveMoney(transaction.TransUUID, userID, amount);
+            }
+            catch (MySql.Data.MySqlClient.MySqlException e)
+            {
+                m_log.Error("[BuyCurrency]: SQL Exception - " + e.ToString());
+                dbm.Manager.Reconnect();
+                ret = giveMoney(transaction.TransUUID, userID, amount);
+            }
+            catch (Exception e)
+            {
+                m_log.Error("[BuyCurrency]: Exception - " + e.ToString());
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
             }
 
-            if (currencyType <= 0)
+            if (ret)
             {
-                throw new ArgumentException("Currency type must be greater than zero", nameof(currencyType));
+                m_log.InfoFormat("[BuyCurrency]: Successfully bought currency for user {0} in amount {1}", userID, amount);
             }
-
-            // implementation goes here
-            return true;
+            return ret;
         }
-
 
         /// <summary>Sets the total sale.</summary>
         /// <param name="transaction">The transaction.</param>
         public bool setTotalSale(TransactionData transaction)
         {
-            if (transaction.Receiver == transaction.Sender) return false;
-            if (transaction.Sender == UUID.Zero.ToString()) return false;
-
             MySQLSuperManager dbm = GetLockedConnection();
+
+            if (transaction.Receiver == transaction.Sender) return false;
+            if (transaction.Sender == UUID.Zero.ToString()) return false;            
 
             int time = (int)((DateTime.UtcNow.Ticks - TicksToEpoch) / 10000000);
             try
@@ -317,6 +452,8 @@ namespace OpenSim.Grid.MoneyServer
         /// <param name="type">The type.</param>
         public bool addUser(string userID, int balance, int status, int type)
         {
+            MySQLSuperManager dbm = GetLockedConnection();
+
             TransactionData transaction = new TransactionData();
             transaction.TransUUID = UUID.Random();
             transaction.Sender = UUID.Zero.ToString();
@@ -334,9 +471,6 @@ namespace OpenSim.Grid.MoneyServer
 
             bool ret = addTransaction(transaction);
             if (!ret) return false;
-
-            //
-            MySQLSuperManager dbm = GetLockedConnection();
 
             try
             {
@@ -362,7 +496,6 @@ namespace OpenSim.Grid.MoneyServer
             if (ret) ret = giveMoney(transaction.TransUUID, userID, balance);
             return ret;
         }
-
 
         /// <summary>Updates the transaction status.</summary>
         /// <param name="transactionID">The transaction identifier.</param>
@@ -392,7 +525,6 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
-
 
         /// <summary>Sets the trans expired.</summary>
         /// <param name="deadTime">The dead time.</param>
@@ -449,7 +581,6 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-
         /// <summary>Fetches the transaction.</summary>
         /// <param name="transactionID">The transaction identifier.</param>
         public TransactionData FetchTransaction(UUID transactionID)
@@ -477,7 +608,6 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-
         /// <summary>Fetches the transaction.</summary>
         /// <param name="userID">The user identifier.</param>
         /// <param name="startTime">The start time.</param>
@@ -486,6 +616,7 @@ namespace OpenSim.Grid.MoneyServer
         public TransactionData FetchTransaction(string userID, int startTime, int endTime, int lastIndex)
         {
             MySQLSuperManager dbm = GetLockedConnection();
+
             TransactionData[] arrTransaction;
 
             uint index = 0;
@@ -522,11 +653,12 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-
         /// <summary>Does the transfer.</summary>
         /// <param name="transactionUUID">The transaction UUID.</param>
         public bool DoTransfer(UUID transactionUUID)
         {
+            MySQLSuperManager dbm = GetLockedConnection();
+
             bool do_trans = false;
 
             TransactionData transaction = new TransactionData();
@@ -558,8 +690,7 @@ namespace OpenSim.Grid.MoneyServer
                             //Return money to sender
                             if (giveMoney(transactionUUID, transaction.Sender, transaction.Amount))
                             {
-                                m_log.ErrorFormat("[MONEY DB]: give money to receiver {0} failed but return it to sender {1} successfully",
-                                                        transaction.Receiver, transaction.Sender);
+                                m_log.ErrorFormat("[MONEY DB]: give money to receiver {0} failed but return it to sender {1} successfully", transaction.Receiver, transaction.Sender);
                                 updateTransactionStatus(transactionUUID, (int)Status.FAILED_STATUS, "give money to receiver failed but return it to sender successfully");
                             }
                             else
@@ -594,12 +725,13 @@ namespace OpenSim.Grid.MoneyServer
             return do_trans;
         }
 
-
         // by Fumi.Iseki
         /// <summary>Does the add money.</summary>
         /// <param name="transactionUUID">The transaction UUID.</param>
         public bool DoAddMoney(UUID transactionUUID)
         {
+            MySQLSuperManager dbm = GetLockedConnection();
+
             TransactionData transaction = new TransactionData();
             transaction = FetchTransaction(transactionUUID);
 
@@ -686,8 +818,9 @@ namespace OpenSim.Grid.MoneyServer
         /// <param name="userID">The user identifier.</param>
         public UserInfo FetchUserInfo(string userID)
         {
-            UserInfo userInfo = null;
             MySQLSuperManager dbm = GetLockedConnection();
+
+            UserInfo userInfo = null;
 
             try
             {
@@ -740,8 +873,6 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
-
-        // Test 2024
 
         public bool UserExists(string userID)
         {
@@ -843,5 +974,111 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
+
+
+        public bool PerformMoneyTransfer(string senderID, string receiverID, int amount)
+        {
+            m_log.InfoFormat("[MONEY TRANSFER]: Transferring {0} from {1} to {2}.", amount, senderID, receiverID);
+
+            // Beispielhafte Implementierung: Führe den Geldtransfer durch
+            try
+            {
+                MySQLSuperManager dbm = GetLockedConnection();
+                string sql = "UPDATE balances SET balance = balance - ?amount WHERE user = ?senderID; " +
+                             "UPDATE balances SET balance = balance + ?amount WHERE user = ?receiverID";
+
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?amount", amount);
+                    cmd.Parameters.AddWithValue("?senderID", senderID);
+                    cmd.Parameters.AddWithValue("?receiverID", receiverID);
+
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    bool result = (rowsAffected > 0);
+
+                    if (result)
+                    {
+                        LogTransaction(UUID.Random(), senderID, -amount);
+                        LogTransaction(UUID.Random(), receiverID, amount);
+                    }
+
+                    return result;
+                }
+            }
+            catch (Exception)
+            {
+                //m_log.ErrorFormat("[MONEY TRANSFER]: Error transferring money: {0}", ex.Message);
+                return false;
+            }
+        }
+
+        public void InitializeUserCurrency(string agentId)
+        {
+            m_log.InfoFormat("[INITIALIZE USER CURRENCY]: Initializing currency for new user: {0}", agentId);
+            int realMoney = 1000; // Beispielwert oder aus der MoneyServer.ini geladen
+            int gameMoney = 10000; // Beispielwert oder aus der MoneyServer.ini geladen
+
+            try
+            {
+                MySQLSuperManager dbm = GetLockedConnection();
+                string sql = "INSERT INTO balances (user, balance) VALUES (?agentId, ?realMoney), (?agentId, ?gameMoney)";
+
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?agentId", agentId);
+                    cmd.Parameters.AddWithValue("?realMoney", realMoney);
+                    cmd.Parameters.AddWithValue("?gameMoney", gameMoney);
+
+                    cmd.ExecuteNonQuery();
+                }
+
+                m_log.InfoFormat("[INITIALIZE USER CURRENCY]: User {0} initialized with {1}€ and {2}L$.", agentId, realMoney, gameMoney);
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[INITIALIZE USER CURRENCY]: Error initializing user currency: {0}", ex.Message);
+            }
+        }
+
+        public Hashtable ApplyFallbackCredit(string agentId)
+        {
+            m_log.WarnFormat("[FALLBACK CREDIT]: Applying fallback credit for user {0}", agentId);
+
+            // Beispielhafte Implementierung: Fallback-Gutschrift in die Datenbank eintragen
+            try
+            {
+                MySQLSuperManager dbm = GetLockedConnection();
+                string sql = "UPDATE balances SET balance = balance + 100 WHERE user = ?agentId";
+
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?agentId", agentId);
+
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[FALLBACK CREDIT]: Error applying fallback credit: {0}", ex.Message);
+            }
+
+            return new Hashtable
+            {
+                { "success", true },
+                { "creditedAmount", 100 },
+                { "message", "Fallback credit applied due to transaction failure." }
+            };
+        }
+
+
+
+
+
+
+
+
+
+
+
     }
 }
