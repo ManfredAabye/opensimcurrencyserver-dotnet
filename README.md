@@ -8,20 +8,25 @@
 
 .
 
-## Buying land without landtool.php is now possible.
+### Buying land without landtool.php is now possible.
 
-OpenSim Currency Server for OpenSim 0.9.3.x Dev (X64/Unix/DotNet6) & (X64/Unix/DotNet8)
+### Buying currency without currency.php is now possible.
 
-Everything works except the actual transfer of money when purchasing currency.
+## OpenSim Currency Server for OpenSim 0.9.3.1 Dev
+Windows Linux IOS DotNet 6.0 & Windows Linux IOS DotNet 8.0
 
-Ubuntu 18 = DOTNET 6.0 - Ubuntu 20+ DOTNET 8.0
+(Ubuntu 18 = DOTNET 6.0 - Ubuntu 20+ DOTNET 8.0)
 
-opensim.currency - modified
+Everything works so far.
 
-From Original DTL/NSL Money Server for X64/Unix/DotNet and Windows 10/11 64bit with XAMPP/MariaDB, X64 DotNet6 & X64 DotNet8
+     ; helper uri (for currency.php and landtool.php):
+     economy = ${Const|BaseURL}:8008/
+     
+Testing Firestorm Viewer for OpenSim 7.1.11.76496 works.
 
+### From the original DTL/NSL Money Server
 by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8.
 
-## TODO: 
-Insert actual payment.
+## TODO:
+Various functions are still missing.
 
