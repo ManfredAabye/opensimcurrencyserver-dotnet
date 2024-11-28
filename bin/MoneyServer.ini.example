@@ -1,0 +1,105 @@
+[Startup]
+;
+; Place to create a PID file
+PIDFile = "/tmp/money.pid"
+
+
+[MySql]
+;
+;Connection parameters of MySQL
+hostname = "localhost"
+database = "robustdatabase"
+username = "JohnDoe"
+password = "opensim"
+
+pooling  = "true"
+port = "3306"
+
+MaxConnection = "25"
+
+[MoneyServer]
+; Port No. of this Server
+ServerPort = 8008
+
+MoneyServerIPaddress = "http://123.123.123.123:8008"
+
+;
+; If the user is not found in database,he/she will be created with the default balance.
+DefaultBalance = 1000
+
+;# Startkapital in EURO
+m_realMoney = 100
+;# Startkapital in L$ 
+m_gameMoney = 500
+
+; Log XML-RPC request to file or console based on debug settings
+;DebugConsole = true
+;DebugFile = false
+ 
+;
+; Is amount==0 transaction enable? Default is false.
+EnableAmountZero = true
+
+; The cost of each currency unit is calculated by multiplying the currency amount by the calculate currency value.
+CalculateCurrency = 10
+
+;
+; If "00000000-0000-0000-0000-000000000000" is specified, all avatars can get money from system.
+; If "" is specified, nobody can get money.
+BankerAvatar = "00000000-0000-0000-0000-000000000000"
+
+;
+; Send/Move money to/from avatar by Money Script 
+EnableForceTransfer = "true"
+EnableScriptSendMoney = "true"
+HGAvatarDefaultBalance = "500"
+GuestAvatarDefaultBalance = "500"
+
+MoneyScriptAccessKey  = "123456789"
+MoneyScriptIPaddress  = "123.123.123.123"
+EnableHGAvatar = "true"
+EnableGuestAvatar = "true"
+
+;
+; Message that displayed in blue dialog, when balance is updated.
+; If "" is specified, blue dialog is not displayed.
+; You can use {0} and {1} in message string.
+; {0} means amount and {1} means avatar name or object owner name.
+BalanceMessageSendGift     = "Sent Gift L${0} to {1}."						;; for send gift to other avatar
+BalanceMessageReceiveGift  = "Received Gift L${0} from {1}."				;; for receieve gift from other avatar
+BalanceMessagePayCharge    = "Paid the Money L${0} for creation."			;; for upload and group creation charge
+BalanceMessageBuyObject    = "Bought the Object {2} from {1} by L${0}."		;; for buy the object
+BalanceMessageSellObject   = "{1} bought the Object {2} by L${0}."          ;; for sell the object
+BalanceMessageLandSale     = "Paid the Money L${0} for Land."				;; for buy the land
+BalanceMessageScvLandSale  = "Paid the Money L${0} for Land."				;; for get the money of the sold land
+BalanceMessageGetMoney     = "Got the Money L${0} from {1}."				;; for get the money from object by llGiveMoney()
+BalanceMessageBuyMoney     = "Bought the Money L${0}."						;; for buy the money from system
+BalanceMessageRollBack     = "RollBack the Transaction: L${0} from/to {1}."	;; when roll back ocuurred
+BalanceMessageSendMoney    = "Paid the Money L${0} to {1}."					;; for sender of sending the money
+BalanceMessageReceiveMoney = "Received L${0} from {1}."						;; for receive the money
+
+[Certificate]
+;
+; Certification Configuration
+;
+
+; CA Cert to check Client/Server Cert
+;CACertFilename = "cacert.crt"
+
+;
+; HTTPS Server Cert (Server Mode)
+;ServerCertFilename = "SineWaveCert.pfx"
+;ServerCertPassword = "JohnDoe"
+;ServerCertFilename = "server_cert.p12"
+;ServerCertPassword = "JohnDoe"
+
+; Client Authentication from Region Server
+CheckClientCert = false
+;ClientCrlFilename = "clcrl.crt"
+
+
+;
+; XML RPC to Region Server (Client Mode)
+CheckServerCert = false
+;ClientCertFilename = "client_cert.p12"
+;ClientCertPassword = "JohnDoe"
