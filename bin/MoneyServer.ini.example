@@ -28,24 +28,23 @@ MoneyServerIPaddress = "http://127.0.0.1:8008"
 ; If the user is not found in database,he/she will be created with the default balance.
 DefaultBalance = 1000
 
-;# Starting capital in EURO
-m_realMoney = 100
-;# Starting capital in L$
-m_gameMoney = 500
-
 ; Maximum per day:
 TotalDay = 100;
 ; Maximum per week:
 TotalWeek = 250;
 ; Maximum per month:
 TotalMonth = 500;
+
 ; General maximum:
 CurrencyMaximum = 20000;
+
 ; Turn on money purchase = on turn off = off.
 CurrencyOnOff = on;
-; Buy money only for group:
-CurrencyGroupOnly = false;
-CurrencyGroupName = "opensim";
+
+; Buy money only for group true/false:
+CurrencyGroupOnly = true;
+; Buy money only for group the group ID
+CurrencyGroupID = "da35d22a-fdbb-1116-90ba-60110ddff123";
 
 
 ; Log XML-RPC request to file or console based on debug settings
