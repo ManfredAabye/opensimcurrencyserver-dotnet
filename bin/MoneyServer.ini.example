@@ -44,7 +44,7 @@ CurrencyOnOff = on;
 ; Buy money only for group true/false:
 CurrencyGroupOnly = true;
 ; Buy money only for group the group ID
-CurrencyGroupID = "da35d22a-fdbb-1116-90ba-60110ddff123";
+CurrencyGroupID = "00000000-0000-0000-0000-000000000000";
 
 
 ; Log XML-RPC request to file or console based on debug settings
