@@ -29,6 +29,23 @@ Testing Firestorm Viewer for OpenSim 7.1.11.76496 works.
 ### From the original DTL/NSL Money Server
 by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8.
 
+## New:
+
+     ; General maximum:
+     CurrencyMaximum = 20000;
+     ; Turn on money purchase = on turn off = off.
+     CurrencyOnOff = on;
+
 ## TODO:
 Various functions are still missing.
+
+     ; Maximum per day:
+     TotalDay = 100;
+     ; Maximum per week:
+     TotalWeek = 250;
+     ; Maximum per month:
+     TotalMonth = 500;
+     ; Buy money only for group:
+     CurrencyGroupOnly = false;
+     CurrencyGroupName = "opensim";
 
