@@ -8,8 +8,8 @@ PIDFile = "/tmp/money.pid"
 ;
 ;Connection parameters of MySQL
 hostname = "localhost"
-database = "robustdatabase"
-username = "JohnDoe"
+database = "robust"
+username = "opensim"
 password = "opensim"
 
 pooling  = "true"
@@ -21,16 +21,32 @@ MaxConnection = "25"
 ; Port No. of this Server
 ServerPort = 8008
 
-MoneyServerIPaddress = "http://123.123.123.123:8008"
+;Money Server IP address
+MoneyServerIPaddress = "http://127.0.0.1:8008"
 
 ;
 ; If the user is not found in database,he/she will be created with the default balance.
 DefaultBalance = 1000
 
-;# Startkapital in EURO
+;# Starting capital in EURO
 m_realMoney = 100
-;# Startkapital in L$ 
+;# Starting capital in L$
 m_gameMoney = 500
+
+; Maximum per day:
+TotalDay = 100;
+; Maximum per week:
+TotalWeek = 250;
+; Maximum per month:
+TotalMonth = 500;
+; General maximum:
+CurrencyMaximum = 20000;
+; Turn on money purchase = on turn off = off.
+CurrencyOnOff = on;
+; Buy money only for group:
+CurrencyGroupOnly = false;
+CurrencyGroupName = "opensim";
+
 
 ; Log XML-RPC request to file or console based on debug settings
 ;DebugConsole = true
@@ -56,7 +72,7 @@ HGAvatarDefaultBalance = "500"
 GuestAvatarDefaultBalance = "500"
 
 MoneyScriptAccessKey  = "123456789"
-MoneyScriptIPaddress  = "123.123.123.123"
+MoneyScriptIPaddress  = "127.0.0.1"
 EnableHGAvatar = "true"
 EnableGuestAvatar = "true"
 
@@ -89,9 +105,9 @@ BalanceMessageReceiveMoney = "Received L${0} from {1}."						;; for receive the 
 ;
 ; HTTPS Server Cert (Server Mode)
 ;ServerCertFilename = "SineWaveCert.pfx"
-;ServerCertPassword = "JohnDoe"
+;ServerCertPassword = "opensim"
 ;ServerCertFilename = "server_cert.p12"
-;ServerCertPassword = "JohnDoe"
+;ServerCertPassword = "opensim"
 
 ; Client Authentication from Region Server
 CheckClientCert = false
@@ -102,4 +118,4 @@ CheckClientCert = false
 ; XML RPC to Region Server (Client Mode)
 CheckServerCert = false
 ;ClientCertFilename = "client_cert.p12"
-;ClientCertPassword = "JohnDoe"
+;ClientCertPassword = "opensim"
