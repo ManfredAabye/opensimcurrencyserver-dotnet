@@ -30,6 +30,7 @@ namespace OpenSim.Grid.MoneyServer
     /// </summary>
     public interface IMoneyDBService
     {
+        int CheckMaximumMoney(string userID, int m_CurrencyMaximum);
         Hashtable ApplyFallbackCredit(string agentId);
 
         void InitializeUserCurrency(string agentId);

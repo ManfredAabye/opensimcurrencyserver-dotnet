@@ -58,6 +58,22 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
     private int DEAD_TIME = 120;
     private int MAX_DB_CONNECTION = 10; // 10 is default
 
+    // Testbereich
+    // Maximum pro Tag:
+    private int m_TotalDay = 100;
+    // Maximum pro Woche:
+    private int m_TotalWeek = 250;
+    // Maximum pro Monat:
+    private int m_TotalMonth = 500;
+    // Maximum Besitz:
+    private int m_CurrencyMaximum = 10000;
+    // Geldkauf abschalten:
+    private string m_CurrencyOnOff = "off";
+    // Geldkauf nur für Gruppe:
+    private bool m_CurrencyGroupOnly = false;
+    private string m_CurrencyGroupName = "";
+
+
     private MoneyXmlRpcModule m_moneyXmlRpcModule;
     private MoneyDBService m_moneyDBService;
 
@@ -227,6 +243,33 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
             m_server_config = moneyConfig.m_config.Configs["MoneyServer"];
             DEAD_TIME = m_server_config.GetInt("ExpiredTime", DEAD_TIME);
             m_moneyServerPort = (uint)m_server_config.GetInt("ServerPort", (int)m_moneyServerPort);
+
+            /*
+            ; Testbereich
+            ; Maximum pro Tag:
+            TotalDay = 100;
+            ; Maximum pro Woche:
+            TotalWeek = 250;
+            ; Maximum pro Monat:
+            TotalMonth = 500;
+            CurrencyMaximum = 10000;
+            
+            Geldkauf abschalten:
+            CurrencyOnOff = true;
+            Geldkauf nur für Gruppe:
+            CurrencyGroupOnly = true;
+            CurrencyGroupName = "GroupName"
+            */
+
+            m_TotalDay = m_server_config.GetInt("TotalDay", m_TotalDay);
+            m_TotalWeek = m_server_config.GetInt("TotalWeek", m_TotalWeek);
+            m_TotalMonth = m_server_config.GetInt("TotalMonth", m_TotalMonth);
+            m_CurrencyMaximum = m_server_config.GetInt("CurrencyMaximum", m_CurrencyMaximum);
+
+            m_CurrencyOnOff = m_server_config.GetString("CurrencyOnOff", m_CurrencyOnOff);
+            m_CurrencyGroupOnly = m_server_config.GetBoolean("CurrencyGroupOnly", m_CurrencyGroupOnly);
+            m_CurrencyGroupName = m_server_config.GetString("CurrencyGroupName", m_CurrencyGroupName);
+
 
             //
             // [Certificate]

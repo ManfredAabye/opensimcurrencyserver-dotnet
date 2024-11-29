@@ -69,6 +69,21 @@ namespace OpenSim.Grid.MoneyServer
         private bool m_forceTransfer = false;
         private string m_bankerAvatar = "";
 
+        // Testbereich
+        // Maximum pro Tag:
+        public int m_TotalDay = 100;
+        // Maximum pro Woche:
+        public int m_TotalWeek = 250;
+        // Maximum pro Monat:
+        public int m_TotalMonth = 500;
+        // Maximum Besitz:
+        public int m_CurrencyMaximum;
+        // Geldkauf abschalten:
+        public string m_CurrencyOnOff;
+        // Geldkauf nur für Gruppe:
+        public bool m_CurrencyGroupOnly = false;
+        public string m_CurrencyGroupName = "";
+
         // Script settings
         private bool m_scriptSendMoney = false;
         private string m_scriptAccessKey = "";
@@ -171,6 +186,15 @@ namespace OpenSim.Grid.MoneyServer
             m_server_config = m_moneyCore.GetServerConfig();    // [MoneyServer] Section
             m_cert_config = m_moneyCore.GetCertConfig();      // [Certificate] Section
 
+            m_TotalDay = serverConfig.GetInt("TotalDay", m_TotalDay);
+            m_TotalWeek = serverConfig.GetInt("TotalWeek", m_TotalWeek);
+            m_TotalMonth = serverConfig.GetInt("TotalMonth", m_TotalMonth);
+            m_CurrencyMaximum = serverConfig.GetInt("CurrencyMaximum", m_CurrencyMaximum);
+
+            m_CurrencyOnOff = serverConfig.GetString("CurrencyOnOff", m_CurrencyOnOff);
+            m_CurrencyGroupOnly = serverConfig.GetBoolean("CurrencyGroupOnly", m_CurrencyGroupOnly);
+            m_CurrencyGroupName = serverConfig.GetString("CurrencyGroupName", m_CurrencyGroupName);            
+
             // [MoneyServer] Section
             m_defaultBalance = m_server_config.GetInt("DefaultBalance", m_defaultBalance);
 
@@ -188,6 +212,16 @@ namespace OpenSim.Grid.MoneyServer
             m_DebugConsole = m_server_config.GetBoolean("DebugConsole", m_DebugConsole); // New feature
             m_DebugFile = m_server_config.GetBoolean("m_DebugFile", m_DebugFile); // New feature
 
+            m_TotalDay = m_server_config.GetInt("TotalDay", m_TotalDay);
+            m_TotalWeek = m_server_config.GetInt("TotalWeek", m_TotalWeek);
+            m_TotalMonth = m_server_config.GetInt("TotalMonth", m_TotalMonth);
+            m_CurrencyMaximum = m_server_config.GetInt("CurrencyMaximum", m_CurrencyMaximum);
+
+            m_CurrencyOnOff = m_server_config.GetString("CurrencyOnOff", m_CurrencyOnOff);
+            m_CurrencyGroupOnly = m_server_config.GetBoolean("CurrencyGroupOnly", m_CurrencyGroupOnly);
+            m_CurrencyGroupName = m_server_config.GetString("CurrencyGroupName", m_CurrencyGroupName);
+
+            if (m_CurrencyMaximum <= 0) m_CurrencyMaximum = 1000;
 
             // Hyper Grid Avatar
             m_hg_enable = m_server_config.GetBoolean("EnableHGAvatar", m_hg_enable);
@@ -611,6 +645,7 @@ namespace OpenSim.Grid.MoneyServer
         // ##################     Currency Buy     ##################
         #region Currency Buy
 
+        
         private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
             m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Process Starting...");
@@ -665,10 +700,29 @@ namespace OpenSim.Grid.MoneyServer
 
                 m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - transactionID: {0}, userID: {1}, amount: {2}", transactionID, userID, amount);
 
+                // Überprüfen, ob der Geldkauf abgeschaltet ist
+
+                // todo: Ist der wert off gegeben dann nachfolgende anweisung
+                if (m_CurrencyOnOff == "off")
+                {
+                    m_log.Info("[CURRENCY PROCESS PHP]: Currency purchase is turned off.");
+                    httpResponse.StatusCode = 403;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Currency purchase is turned off</response>");
+                    return;
+                }
+
                 if (methodName == "getCurrencyQuote")
                 {
                     // Währungsangebot abrufen
                     Hashtable quoteResponse = PerformGetCurrencyQuote(agentId, currencyBuy, secureSessionId);
+
+                    // Besitz begrenzen auf ein Maximum
+                    int excessAmount = CheckMaximumMoney(agentId, m_CurrencyMaximum);
+                    if (excessAmount > 0)
+                    {
+                        quoteResponse["message"] = $"Your balance was reduced by {excessAmount} to enforce the maximum limit.";
+                    }
+
                     XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = quoteResponse };
                     httpResponse.StatusCode = 200;
                     httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
@@ -684,6 +738,10 @@ namespace OpenSim.Grid.MoneyServer
                         // Gutschrift durchführen
                         PerformMoneyTransfer("BANKER", agentId, currencyBuy);
                         UpdateBalance(agentId, "Currency purchase successful.");
+
+                        // Besitz begrenzen auf ein Maximum
+                        CheckMaximumMoney(agentId, m_CurrencyMaximum);
+
                         XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = purchaseResponse };
                         httpResponse.StatusCode = 200;
                         httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
@@ -709,6 +767,71 @@ namespace OpenSim.Grid.MoneyServer
                 httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
         }
+
+        
+        public new int CheckMaximumMoney(string userID, int m_CurrencyMaximum)
+        {
+            MySQLSuperManager dbm = GetLockedConnection();
+            //int m_CurrencyMaximum = 10000; // Beispielwert, sollte aus der Konfigurationsdatei MoneyServer.ini geladen werden
+            m_log.InfoFormat ("[CHECK MAXIMUM MONEY]: Currency Maximum: {0}", m_CurrencyMaximum);
+
+            try
+            {
+                // Ausnahmen für SYSTEM und BANKER
+                if (userID == "SYSTEM" || userID == "BANKER" || userID == m_bankerAvatar)
+                {
+                    return 0; // Keine Begrenzung für diese Benutzer
+                }
+
+                // Abrufen des aktuellen Guthabens des Benutzers
+                string sql = "SELECT balance FROM balances WHERE user = ?userID";
+                int currentBalance = 0;
+
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?userID", userID);
+
+                    using (MySqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            currentBalance = reader.GetInt32("balance");
+                        }
+                    }
+                }
+
+                // Überprüfen, ob das Guthaben über dem Maximum liegt und ggf. abziehen
+                if (currentBalance > m_CurrencyMaximum)
+                {
+                    int excessAmount = currentBalance - m_CurrencyMaximum;
+
+                    // Guthaben auf das Maximum reduzieren
+                    sql = "UPDATE balances SET balance = ?newBalance WHERE user = ?userID";
+                    using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                    {
+                        cmd.Parameters.AddWithValue("?newBalance", m_CurrencyMaximum);
+                        cmd.Parameters.AddWithValue("?userID", userID);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    m_log.InfoFormat("[CheckMaximumMoney]: Reduced balance for user {0} by {1} to enforce maximum limit of {2}", userID, excessAmount, m_CurrencyMaximum);
+                    return excessAmount; // Rückgabe des abgezogenen Betrags
+                }
+
+                return 0; // Keine Änderung, falls das Guthaben innerhalb des Limits liegt
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[CheckMaximumMoney]: Error checking and updating user balance: {0}", ex.Message);
+                throw;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+
+
 
 
         private Hashtable ExtractXmlRpcParams(XmlDocument doc)
@@ -3052,26 +3175,77 @@ namespace OpenSim.Grid.MoneyServer
             string sessionID = string.Empty;
             string secureID = string.Empty;
 
+            // Konfiguriere das maximale Guthaben (dieser Wert kann aus einer Konfigurationsdatei wie MoneyServer.ini geladen werden)
+            //int m_CurrencyMaximum = m_CurrencyMaximum;
+
             if (m_sessionDic.ContainsKey(userID) && m_secureSessionDic.ContainsKey(userID))
             {
                 sessionID = m_sessionDic[userID];
                 secureID = m_secureSessionDic[userID];
 
+                // Aktuelles Guthaben des Benutzers abrufen
+                int currentBalance = m_moneyDBService.getBalance(userID);
+
+                // Überprüfen, ob das Guthaben über dem Maximum liegt und ggf. abziehen
+                if (currentBalance > m_CurrencyMaximum)
+                {
+                    int excessAmount = currentBalance - m_CurrencyMaximum;
+
+                    // Guthaben auf das Maximum reduzieren
+                    bool balanceUpdateSuccess = ReduceUserBalance(userID, excessAmount);
+                    if (!balanceUpdateSuccess)
+                    {
+                        m_log.ErrorFormat("[UpdateBalance]: Error reducing user balance for user {0}", userID);
+                        return;
+                    }
+
+                    currentBalance = m_CurrencyMaximum;
+                    m_log.InfoFormat("[UpdateBalance]: Reduced balance for user {0} by {1} to enforce maximum limit of {2}", userID, excessAmount, m_CurrencyMaximum);
+                }
+
                 Hashtable requestTable = new Hashtable();
                 requestTable["clientUUID"] = userID;
                 requestTable["clientSessionID"] = sessionID;
                 requestTable["clientSecureSessionID"] = secureID;
-                requestTable["Balance"] = m_moneyDBService.getBalance(userID);
+                requestTable["Balance"] = currentBalance;
                 if (message != "") requestTable["Message"] = message;
 
                 UserInfo user = m_moneyDBService.FetchUserInfo(userID);
                 if (user != null)
                 {
                     genericCurrencyXMLRPCRequest(requestTable, "UpdateBalance", user.SimIP);
-                    m_log.InfoFormat("[MONEY XMLRPC]: UpdateBalance: Sended UpdateBalance Request to {0}", user.SimIP.ToString());
+                    m_log.InfoFormat("[MONEY XMLRPC]: UpdateBalance: Sent UpdateBalance Request to {0}", user.SimIP.ToString());
                 }
             }
         }
+
+        private bool ReduceUserBalance(string userID, int amount)
+        {
+            string sql = "UPDATE balances SET balance = balance - ?amount WHERE user = ?userID";
+            MySQLSuperManager dbm = GetLockedConnection();
+
+            try
+            {
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?amount", amount);
+                    cmd.Parameters.AddWithValue("?userID", userID);
+
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    return rowsAffected > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[ReduceUserBalance]: Error reducing user balance: {0}", ex.Message);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+
 
         protected bool RollBackTransaction(TransactionData transaction)
         {
