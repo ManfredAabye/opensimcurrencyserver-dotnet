@@ -24,7 +24,6 @@ ServerPort = 8008
 ;Money Server IP address
 MoneyServerIPaddress = "http://127.0.0.1:8008"
 
-;
 ; If the user is not found in database,he/she will be created with the default balance.
 DefaultBalance = 1000
 
@@ -53,19 +52,16 @@ UserMailLock = true;
 ;DebugConsole = true
 ;DebugFile = false
  
-;
 ; Is amount==0 transaction enable? Default is false.
 EnableAmountZero = true
 
 ; The cost of each currency unit is calculated by multiplying the currency amount by the calculate currency value.
 CalculateCurrency = 10
 
-;
 ; If "00000000-0000-0000-0000-000000000000" is specified, all avatars can get money from system.
 ; If "" is specified, nobody can get money.
 BankerAvatar = "00000000-0000-0000-0000-000000000000"
 
-;
 ; Send/Move money to/from avatar by Money Script 
 EnableForceTransfer = "true"
 EnableScriptSendMoney = "true"
