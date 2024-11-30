@@ -35,6 +35,14 @@ by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for Do
      CurrencyMaximum = 20000;
      ; Turn on money purchase = on turn off = off.
      CurrencyOnOff = on;
+     
+     ; Buy money only for group true/false:
+     CurrencyGroupOnly = true;
+     ; Buy money only for group the group ID
+     CurrencyGroupID = "00000000-0000-0000-0000-000000000000";
+     
+     ; Verify the email address and anyone without it cannot buy money.
+     UserMailLock = true;
 
 ## TODO:
 Various functions are still missing.
