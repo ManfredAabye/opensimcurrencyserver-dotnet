@@ -176,7 +176,7 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
             int deadTime = unixEpochTime - DEAD_TIME;
             m_moneyDBService.SetTransExpired(deadTime);
 
-            m_log.Info("[CHECK TRANSACTION]: Transactions checked successfully.");
+            //m_log.Info("[CHECK TRANSACTION]: Transactions checked successfully.");
         }
         catch (Exception ex)
         {
@@ -263,13 +263,6 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
             TotalWeek = 250;
             ; Maximum pro Monat:
             TotalMonth = 500;
-            CurrencyMaximum = 10000;
-            
-            Geldkauf abschalten:
-            CurrencyOnOff = true;
-            Geldkauf nur für Gruppe:
-            CurrencyGroupOnly = true;
-            CurrencyGroupName = "GroupName"
             */
 
             m_TotalDay = m_server_config.GetInt("TotalDay", m_TotalDay);

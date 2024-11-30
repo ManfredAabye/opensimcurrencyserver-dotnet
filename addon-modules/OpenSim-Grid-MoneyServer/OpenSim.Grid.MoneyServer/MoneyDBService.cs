@@ -187,67 +187,7 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
-
-        /*
-        public int CheckMaximumMoney(string userID, int m_CurrencyMaximum)
-        {
-            MySQLSuperManager dbm = GetLockedConnection();
-            // todo: Beispielwert, sollte aus der Konfigurationsdatei MoneyServer.ini geladen werden
-            m_log.InfoFormat("[CHECK MAXIMUM MONEY]: Currency Maximum: {0}", m_CurrencyMaximum);
-            if (m_CurrencyMaximum <= 0)
-            {
-                m_CurrencyMaximum = 1000;
-            }
-
-            try
-            {
-                // Abrufen des aktuellen Guthabens des Benutzers
-                string sql = "SELECT balance FROM balances WHERE user = ?userID";
-                int currentBalance = 0;
-
-                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
-                {
-                    cmd.Parameters.AddWithValue("?userID", userID);
-
-                    using (MySqlDataReader reader = cmd.ExecuteReader())
-                    {
-                        if (reader.Read())
-                        {
-                            currentBalance = reader.GetInt32("balance");
-                        }
-                    }
-                }
-
-                // Überprüfen, ob das Guthaben über dem Maximum liegt und ggf. abziehen
-                if (currentBalance > m_CurrencyMaximum)
-                {
-                    int excessAmount = currentBalance - m_CurrencyMaximum;
-
-                    // Guthaben auf das Maximum reduzieren
-                    sql = "UPDATE balances SET balance = ?newBalance WHERE user = ?userID";
-                    using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
-                    {
-                        cmd.Parameters.AddWithValue("?newBalance", m_CurrencyMaximum);
-                        cmd.Parameters.AddWithValue("?userID", userID);
-                        cmd.ExecuteNonQuery();
-                    }
-
-                    m_log.InfoFormat("[CheckMaximumMoney]: Reduced balance for user {0} by {1} to enforce maximum limit of {2}", userID, excessAmount, m_CurrencyMaximum);
-                    return excessAmount; // Rückgabe des abgezogenen Betrags
-                }
-
-                return 0; // Keine Änderung, falls das Guthaben innerhalb des Limits liegt
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[CheckMaximumMoney]: Error checking and updating user balance: {0}", ex.Message);
-                throw;
-            }
-            finally
-            {
-                dbm.Release();
-            }
-        }*/
+               
         public int CheckMaximumMoney(string userID, int m_CurrencyMaximum)
         {
             MySQLSuperManager dbm = GetLockedConnection();
