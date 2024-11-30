@@ -46,6 +46,8 @@ CurrencyGroupOnly = true;
 ; Buy money only for group the group ID
 CurrencyGroupID = "00000000-0000-0000-0000-000000000000";
 
+; Verify the email address and anyone without it cannot buy money.
+UserMailLock = true;
 
 ; Log XML-RPC request to file or console based on debug settings
 ;DebugConsole = true
