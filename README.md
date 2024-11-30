@@ -53,7 +53,3 @@ Various functions are still missing.
      TotalWeek = 250;
      ; Maximum per month:
      TotalMonth = 500;
-     ; Buy money only for group:
-     CurrencyGroupOnly = false;
-     CurrencyGroupName = "opensim";
-
