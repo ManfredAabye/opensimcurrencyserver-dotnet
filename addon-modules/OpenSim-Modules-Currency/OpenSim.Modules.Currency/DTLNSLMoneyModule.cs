@@ -1150,8 +1150,7 @@ namespace OpenSim.Modules.Currency
         /// <param name="localID">The local identifier.</param>
         /// <param name="saleType">Type of the sale.</param>
         /// <param name="salePrice">The sale price.</param>
-        public void OnObjectBuy(IClientAPI remoteClient, UUID agentID, UUID sessionID,
-                                UUID groupID, UUID categoryID, uint localID, byte saleType, int salePrice)
+        public void OnObjectBuy(IClientAPI remoteClient, UUID agentID, UUID sessionID, UUID groupID, UUID categoryID, uint localID, byte saleType, int salePrice)
         {
             m_log.InfoFormat("[MONEY MODULE]: OnObjectBuy: agent = {0}, {1}", agentID, remoteClient.AgentId);
 

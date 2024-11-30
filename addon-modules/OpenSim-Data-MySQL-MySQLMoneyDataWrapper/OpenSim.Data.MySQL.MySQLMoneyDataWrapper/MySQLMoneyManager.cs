@@ -62,222 +62,39 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
 
         private void Initialise(string connect)
         {
+            // 1. Initialisiere Verbindungen
+            InitialiseConnection(connect);
+
+            // 2. Überprüfe und erstelle Tabellen
+            CheckAndCreateTables();
+        }
+
+        // 1. Initialisiere Verbindungen
+        private void InitialiseConnection(string connect)
+        {
             try
             {
                 connectString = connect;
                 dbcon = new MySqlConnection(connectString);
-                try
-                {
-                    dbcon.Open();
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("[MONEY MANAGER]: Connection error while using connection string [" + connectString + "]", e);
-                }
-
+                dbcon.Open();
             }
-
             catch (Exception e)
             {
-                throw new Exception("[MONEY MANAGER]: Error initialising MySql Database: " + e.ToString());
+                throw new Exception("[MONEY MANAGER]: Error initializing MySql Database: " + e.ToString());
             }
+        }
 
+        // 2. Überprüfe und erstelle Tabellen
+        private void CheckAndCreateTables()
+        {
             try
             {
-                Dictionary<string, string> tableList = new Dictionary<string, string>();
-                tableList = CheckTables();
+                Dictionary<string, string> tableList = CheckTables();
 
-                //
-                // Balances Table
-                if (!tableList.ContainsKey(Table_of_Balances))
-                {
-                    try
-                    {
-                        CreateBalancesTable();
-                    }
-                    catch (Exception e)
-                    {
-                        throw new Exception("[MONEY MANAGER]: Error creating balances table: " + e.ToString());
-                    }
-                }
-                else
-                {
-                    string version = tableList[Table_of_Balances].Trim();
-                    int nVer = getTableVersionNum(version);
-                    balances_rev = nVer;
-                    switch (nVer)
-                    {
-                        case 1: //Rev.1
-                            UpdateBalancesTable1();
-                            UpdateBalancesTable2();
-                            UpdateBalancesTable3();
-                            break;
-                        case 2: //Rev.2
-                            UpdateBalancesTable2();
-                            UpdateBalancesTable3();
-                            break;
-                        case 3: //Rev.3
-                            UpdateBalancesTable3();
-                            break;
-                    }
-                }
-
-                //
-                // UserInfo Table
-                if (!tableList.ContainsKey(Table_of_UserInfo))
-                {
-                    try
-                    {
-                        CreateUserInfoTable();
-                    }
-                    catch (Exception e)
-                    {
-                        throw new Exception("[MONEY MANAGER]: Error creating userinfo table: " + e.ToString());
-                    }
-                }
-                else
-                {
-                    string version = tableList[Table_of_UserInfo].Trim();
-                    int nVer = getTableVersionNum(version);
-                    userinfo_rev = nVer;
-                    switch (nVer)
-                    {
-                        case 1: //Rev.1
-                            UpdateUserInfoTable1();
-                            UpdateUserInfoTable2();
-                            break;
-                        case 2: //Rev.2
-                            UpdateUserInfoTable2();
-                            break;
-                    }
-                }
-
-                //
-                // Transactions Table
-                if (!tableList.ContainsKey(Table_of_Transactions))
-                {
-                    try
-                    {
-                        CreateTransactionsTable();
-                    }
-                    catch (Exception e)
-                    {
-                        throw new Exception("[MONEY MANAGER]: Error creating transactions table: " + e.ToString());
-                    }
-                }
-                // check transactions table version
-                else
-                {
-                    string version = tableList[Table_of_Transactions].Trim();
-                    int nVer = getTableVersionNum(version);
-                    switch (nVer)
-                    {
-                        case 2: //Rev.2
-                            UpdateTransactionsTable2();
-                            UpdateTransactionsTable3();
-                            UpdateTransactionsTable4();
-                            UpdateTransactionsTable5();
-                            UpdateTransactionsTable6();
-                            UpdateTransactionsTable7();
-                            UpdateTransactionsTable8();
-                            UpdateTransactionsTable9();
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 3: //Rev.3
-                            UpdateTransactionsTable3();
-                            UpdateTransactionsTable4();
-                            UpdateTransactionsTable5();
-                            UpdateTransactionsTable6();
-                            UpdateTransactionsTable7();
-                            UpdateTransactionsTable8();
-                            UpdateTransactionsTable9();
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 4: //Rev.4
-                            UpdateTransactionsTable4();
-                            UpdateTransactionsTable5();
-                            UpdateTransactionsTable6();
-                            UpdateTransactionsTable7();
-                            UpdateTransactionsTable8();
-                            UpdateTransactionsTable9();
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 5: //Rev.5
-                            UpdateTransactionsTable5();
-                            UpdateTransactionsTable6();
-                            UpdateTransactionsTable7();
-                            UpdateTransactionsTable8();
-                            UpdateTransactionsTable9();
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 6: //Rev.6
-                            UpdateTransactionsTable6();
-                            UpdateTransactionsTable7();
-                            UpdateTransactionsTable8();
-                            UpdateTransactionsTable9();
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 7: //Rev.7
-                            UpdateTransactionsTable7();
-                            UpdateTransactionsTable8();
-                            UpdateTransactionsTable9();
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 8: //Rev.8
-                            UpdateTransactionsTable8();
-                            UpdateTransactionsTable9();
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 9: //Rev.9
-                            UpdateTransactionsTable9();
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 10: //Rev.10
-                            UpdateTransactionsTable10();
-                            UpdateTransactionsTable11();
-                            break;
-                        case 11: //Rev.11
-                            UpdateTransactionsTable11();
-                            break;
-                    }
-                }
-
-                //
-                // TotalSales Table
-                if (!tableList.ContainsKey(Table_of_TotalSales))
-                {
-                    try
-                    {
-                        CreateTotalSalesTable();
-                    }
-                    catch (Exception e)
-                    {
-                        throw new Exception("[MONEY MANAGER]: Error creating totalsales table: " + e.ToString());
-                    }
-                }
-                else
-                {
-                    string version = tableList[Table_of_TotalSales].Trim();
-                    int nVer = getTableVersionNum(version);
-                    switch (nVer)
-                    {
-                        case 1: //Rev.1
-                            UpdateTotalSalesTable1();
-                            UpdateTotalSalesTable2();
-                            break;
-                        case 2: //Rev.2
-                            UpdateTotalSalesTable2();
-                            break;
-                    }
-                }
+                InitialiseBalancesTable(tableList);
+                InitialiseUserInfoTable(tableList);
+                InitialiseTransactionsTable(tableList);
+                InitialiseTotalSalesTable(tableList);
             }
             catch (Exception e)
             {
@@ -285,6 +102,202 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
                 throw new Exception("[MONEY MANAGER]: Error checking or creating tables: " + e.ToString());
             }
         }
+
+        private void InitialiseBalancesTable(Dictionary<string, string> tableList)
+        {
+            if (!tableList.ContainsKey(Table_of_Balances))
+            {
+                try
+                {
+                    CreateBalancesTable();
+                }
+                catch (Exception e)
+                {
+                    throw new Exception("[MONEY MANAGER]: Error creating balances table: " + e.ToString());
+                }
+            }
+            else
+            {
+                string version = tableList[Table_of_Balances].Trim();
+                int nVer = getTableVersionNum(version);
+                balances_rev = nVer;
+                switch (nVer)
+                {
+                    case 1: //Rev.1
+                        UpdateBalancesTable1();
+                        UpdateBalancesTable2();
+                        UpdateBalancesTable3();
+                        break;
+                    case 2: //Rev.2
+                        UpdateBalancesTable2();
+                        UpdateBalancesTable3();
+                        break;
+                    case 3: //Rev.3
+                        UpdateBalancesTable3();
+                        break;
+                }
+            }
+        }
+
+        private void InitialiseUserInfoTable(Dictionary<string, string> tableList)
+        {
+            if (!tableList.ContainsKey(Table_of_UserInfo))
+            {
+                try
+                {
+                    CreateUserInfoTable();
+                }
+                catch (Exception e)
+                {
+                    throw new Exception("[MONEY MANAGER]: Error creating userinfo table: " + e.ToString());
+                }
+            }
+            else
+            {
+                string version = tableList[Table_of_UserInfo].Trim();
+                int nVer = getTableVersionNum(version);
+                userinfo_rev = nVer;
+                switch (nVer)
+                {
+                    case 1: //Rev.1
+                        UpdateUserInfoTable1();
+                        UpdateUserInfoTable2();
+                        break;
+                    case 2: //Rev.2
+                        UpdateUserInfoTable2();
+                        break;
+                }
+            }
+        }
+
+        private void InitialiseTransactionsTable(Dictionary<string, string> tableList)
+        {
+            if (!tableList.ContainsKey(Table_of_Transactions))
+            {
+                try
+                {
+                    CreateTransactionsTable();
+                }
+                catch (Exception e)
+                {
+                    throw new Exception("[MONEY MANAGER]: Error creating transactions table: " + e.ToString());
+                }
+            }
+            else
+            {
+                string version = tableList[Table_of_Transactions].Trim();
+                int nVer = getTableVersionNum(version);
+                switch (nVer)
+                {
+                    case 2: //Rev.2
+                        UpdateTransactionsTable2();
+                        UpdateTransactionsTable3();
+                        UpdateTransactionsTable4();
+                        UpdateTransactionsTable5();
+                        UpdateTransactionsTable6();
+                        UpdateTransactionsTable7();
+                        UpdateTransactionsTable8();
+                        UpdateTransactionsTable9();
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 3: //Rev.3
+                        UpdateTransactionsTable3();
+                        UpdateTransactionsTable4();
+                        UpdateTransactionsTable5();
+                        UpdateTransactionsTable6();
+                        UpdateTransactionsTable7();
+                        UpdateTransactionsTable8();
+                        UpdateTransactionsTable9();
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 4: //Rev.4
+                        UpdateTransactionsTable4();
+                        UpdateTransactionsTable5();
+                        UpdateTransactionsTable6();
+                        UpdateTransactionsTable7();
+                        UpdateTransactionsTable8();
+                        UpdateTransactionsTable9();
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 5: //Rev.5
+                        UpdateTransactionsTable5();
+                        UpdateTransactionsTable6();
+                        UpdateTransactionsTable7();
+                        UpdateTransactionsTable8();
+                        UpdateTransactionsTable9();
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 6: //Rev.6
+                        UpdateTransactionsTable6();
+                        UpdateTransactionsTable7();
+                        UpdateTransactionsTable8();
+                        UpdateTransactionsTable9();
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 7: //Rev.7
+                        UpdateTransactionsTable7();
+                        UpdateTransactionsTable8();
+                        UpdateTransactionsTable9();
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 8: //Rev.8
+                        UpdateTransactionsTable8();
+                        UpdateTransactionsTable9();
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 9: //Rev.9
+                        UpdateTransactionsTable9();
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 10: //Rev.10
+                        UpdateTransactionsTable10();
+                        UpdateTransactionsTable11();
+                        break;
+                    case 11: //Rev.11
+                        UpdateTransactionsTable11();
+                        break;
+                }
+            }
+        }
+
+        private void InitialiseTotalSalesTable(Dictionary<string, string> tableList)
+        {
+            if (!tableList.ContainsKey(Table_of_TotalSales))
+            {
+                try
+                {
+                    CreateTotalSalesTable();
+                }
+                catch (Exception e)
+                {
+                    throw new Exception("[MONEY MANAGER]: Error creating totalsales table: " + e.ToString());
+                }
+            }
+            else
+            {
+                string version = tableList[Table_of_TotalSales].Trim();
+                int nVer = getTableVersionNum(version);
+                switch (nVer)
+                {
+                    case 1: //Rev.1
+                        UpdateTotalSalesTable1();
+                        UpdateTotalSalesTable2();
+                        break;
+                    case 2: //Rev.2
+                        UpdateTotalSalesTable2();
+                        break;
+                }
+            }
+        }
+
 
 
         /// <summary>Gets the table version number.</summary>

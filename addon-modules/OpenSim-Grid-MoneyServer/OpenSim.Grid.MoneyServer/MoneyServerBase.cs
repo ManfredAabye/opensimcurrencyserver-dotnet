@@ -48,6 +48,7 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
 
     private string connectionString = string.Empty;
     private uint m_moneyServerPort = 8008;         // 8008 is default server port
+    private Timer checkTimer;
 
     private string m_certFilename = "";
     private string m_certPassword = "";
@@ -87,23 +88,32 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
     IConfig m_cert_config;
 
 
-
-    /// <summary>
-    /// Initializes a new instance of the MoneyServerBase class.
-    /// </summary>
-    /// <remarks>
-    /// This constructor initializes the MoneyServerBase object and sets up the console and logging.
-    /// </remarks>
     public MoneyServerBase()
     {
-        // Initialize the console for the Money Server
-        m_console = new LocalConsole("MoneyServer ");
+        try
+        {
+            // Initialize the console for the Money Server
+            m_console = new LocalConsole("MoneyServer ");
 
-        // Set the main console instance to the Money Server console
-        MainConsole.Instance = m_console;
+            if (m_console != null)
+            {
+                // Set the main console instance to the Money Server console
+                MainConsole.Instance = m_console;
 
-        // Log a message to indicate that the Money Server is initializing
-        m_log.Info("[MONEY SERVER]: Initializing Money Server module and loading configurations...");
+                // Log a message to indicate that the Money Server is initializing
+                m_log?.Info("[MONEY SERVER]: Initializing Money Server module and loading configurations...");
+            }
+            else
+            {
+                throw new InvalidOperationException("Failed to initialize LocalConsole instance.");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log the exception
+            m_log?.Error("An error occurred during MoneyServerBase initialization.", ex);
+            throw;
+        }
     }
 
     /// <summary>
@@ -112,12 +122,11 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
     public void Work()
     {
         // Create a new timer to check transactions every 60 seconds
-        Timer checkTimer = new Timer
+        checkTimer = new Timer
         {
             Interval = 60 * 1000,
             Enabled = true
         };
-
 
         // Add event handler to check transactions
         checkTimer.Elapsed += CheckTransaction;
@@ -148,15 +157,15 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
             }
         }
     }
-
+        
     /// <summary>
-    /// Check the transactions table, set expired transaction state to failed
+    /// Checks transactions.
     /// </summary>
     private void CheckTransaction(object sender, ElapsedEventArgs e)
     {
         if (m_moneyDBService == null)
         {
-            m_log.Error("m_moneyDBService is null, cannot check transactions.");
+            m_log.Error("[CHECK TRANSACTION]: m_moneyDBService is null, cannot check transactions.");
             return;
         }
 
@@ -166,10 +175,12 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
             int unixEpochTime = (int)((DateTime.UtcNow.Ticks - ticksToEpoch) / 10000000);
             int deadTime = unixEpochTime - DEAD_TIME;
             m_moneyDBService.SetTransExpired(deadTime);
+
+            m_log.Info("[CHECK TRANSACTION]: Transactions checked successfully.");
         }
         catch (Exception ex)
         {
-            m_log.ErrorFormat("Error in CheckTransaction: {0}", ex.Message);
+            m_log.ErrorFormat("[CHECK TRANSACTION]: Error in CheckTransaction: {0}", ex.Message);
         }
     }
 

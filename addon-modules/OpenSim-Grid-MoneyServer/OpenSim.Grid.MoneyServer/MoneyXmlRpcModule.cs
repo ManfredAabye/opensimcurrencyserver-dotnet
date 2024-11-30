@@ -64,7 +64,7 @@ namespace OpenSim.Grid.MoneyServer
         private int m_gameMoney = 10000; // Beispielwert oder aus der MoneyServer.ini geladen
 
         // MoneyServer settings
-        private int m_defaultBalance = 1000;
+        public int m_defaultBalance = 1000;
 
         private bool m_forceTransfer = false;
         private string m_bankerAvatar = "";
@@ -82,7 +82,9 @@ namespace OpenSim.Grid.MoneyServer
         public string m_CurrencyOnOff;
         // Geldkauf nur für Gruppe:
         public bool m_CurrencyGroupOnly = false;
+        public bool m_UserMailLock = false;
         public string m_CurrencyGroupName = "";
+        public string m_CurrencyGroupID = "";
 
         // Script settings
         private bool m_scriptSendMoney = false;
@@ -193,7 +195,10 @@ namespace OpenSim.Grid.MoneyServer
 
             m_CurrencyOnOff = serverConfig.GetString("CurrencyOnOff", m_CurrencyOnOff);
             m_CurrencyGroupOnly = serverConfig.GetBoolean("CurrencyGroupOnly", m_CurrencyGroupOnly);
-            m_CurrencyGroupName = serverConfig.GetString("CurrencyGroupName", m_CurrencyGroupName);            
+            m_UserMailLock = serverConfig.GetBoolean("UserMailLock", m_UserMailLock);
+            
+            m_CurrencyGroupName = serverConfig.GetString("CurrencyGroupName", m_CurrencyGroupName);
+            m_CurrencyGroupID = serverConfig.GetString("CurrencyGroupID", m_CurrencyGroupID);
 
             // [MoneyServer] Section
             m_defaultBalance = m_server_config.GetInt("DefaultBalance", m_defaultBalance);
@@ -219,7 +224,10 @@ namespace OpenSim.Grid.MoneyServer
 
             m_CurrencyOnOff = m_server_config.GetString("CurrencyOnOff", m_CurrencyOnOff);
             m_CurrencyGroupOnly = m_server_config.GetBoolean("CurrencyGroupOnly", m_CurrencyGroupOnly);
+            m_UserMailLock = m_server_config.GetBoolean("UserMailLock", m_UserMailLock);
+
             m_CurrencyGroupName = m_server_config.GetString("CurrencyGroupName", m_CurrencyGroupName);
+            m_CurrencyGroupID = m_server_config.GetString("CurrencyGroupID", m_CurrencyGroupID);
 
             if (m_CurrencyMaximum <= 0) m_CurrencyMaximum = 1000;
 
@@ -645,11 +653,12 @@ namespace OpenSim.Grid.MoneyServer
         // ##################     Currency Buy     ##################
         #region Currency Buy
 
-        
+
         private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
             m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Process Starting...");
 
+            // Überprüfe, ob die Anfrage oder die Antwort null ist
             if (httpRequest == null || httpResponse == null)
             {
                 m_log.Error("[CURRENCY PROCESS PHP]: Invalid request or response object.");
@@ -657,7 +666,6 @@ namespace OpenSim.Grid.MoneyServer
                 httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid request</response>");
                 return;
             }
-
             try
             {
                 // Request Body auslesen
@@ -683,15 +691,42 @@ namespace OpenSim.Grid.MoneyServer
                 // Parameter extrahieren
                 Hashtable parameters = ExtractXmlRpcParams(doc);
 
+                // AgentID, SecureSessionID und CurrencyBuy aus den Parametern extrahieren
                 string agentId = parameters["agentId"]?.ToString();
                 string secureSessionId = parameters["secureSessionId"]?.ToString();
                 int currencyBuy = int.Parse(parameters["currencyBuy"]?.ToString() ?? "0");
 
                 m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - AgentId: {0}, CurrencyBuy: {1}, SecureSessionId: {2}", agentId, currencyBuy, secureSessionId);
 
+                // TransactionID und UserID aus den Parametern extrahieren
                 string transactionID = parameters["transactionID"]?.ToString();
                 string userID = parameters["agentId"]?.ToString();
                 int amount = int.Parse(parameters["currencyBuy"]?.ToString() ?? "0");
+
+                // UUID für die Gruppe des Benutzers extrahieren
+                //string m_CurrencyGroupID = "da35d22a-fdbb-1116-90ba-60110ddff123"; // Beispielsgruppe
+
+                // Überprüfen, ob der Benutzer Mitglied der angegebenen Gruppe ist, nur wenn CurrencyGroupOnly = true
+                //bool CurrencyGroupOnly = true; // Beispielwert, sollte aus der Konfigurationsdatei geladen werden
+
+                // Überprüfen, ob der Benutzer Mitglied der angegebenen Gruppe ist, nur wenn CurrencyGroupOnly = true
+                if (m_CurrencyGroupOnly && !IsUserInGroup(agentId, m_CurrencyGroupID))
+                {
+                    m_log.InfoFormat("[CURRENCY PROCESS PHP]: User {0} is not a member of the required group {1}.", agentId, m_CurrencyGroupID);
+                    httpResponse.StatusCode = 403;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>User is not a member of the required group</response>");
+                    return;
+                }
+
+                // Überprüfen, ob der Benutzer eine hinterlegte E-Mail-Adresse hat
+                //if (!UserMailLock(agentId))
+                if (m_UserMailLock && !UserMailLock(agentId))
+                    {
+                    m_log.InfoFormat("[CURRENCY PROCESS PHP]: User {0} does not have a registered email address.", agentId);
+                    httpResponse.StatusCode = 403;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>User does not have a registered email address</response>");
+                    return;
+                }
 
                 if (string.IsNullOrEmpty(transactionID))
                 {
@@ -701,15 +736,18 @@ namespace OpenSim.Grid.MoneyServer
                 m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - transactionID: {0}, userID: {1}, amount: {2}", transactionID, userID, amount);
 
                 // Überprüfen, ob der Geldkauf abgeschaltet ist
-
-                // todo: Ist der wert off gegeben dann nachfolgende anweisung
-                if (m_CurrencyOnOff == "off")
+                //bool m_CurrencyOnOff = true; // Dieser Wert sollte aus der Konfigurationsdatei geladen werden
+                if (m_CurrencyOnOff != "off" && !CheckGroupMoney(agentId, m_CurrencyGroupID))
                 {
-                    m_log.Info("[CURRENCY PROCESS PHP]: Currency purchase is turned off.");
+                    m_log.Info("[CURRENCY PROCESS PHP]: Currency purchase is turned off for this user.");
                     httpResponse.StatusCode = 403;
                     httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Currency purchase is turned off</response>");
                     return;
                 }
+
+                // Currency Maximum aus der Konfigurationsdatei laden
+                //int m_CurrencyMaximum = 10000; // Beispielwert, sollte aus der Konfigurationsdatei geladen werden
+                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Maximum loaded: {0}", m_CurrencyMaximum);
 
                 if (methodName == "getCurrencyQuote")
                 {
@@ -768,18 +806,142 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
+        private bool UserMailLock(string userID)
+        {
+            m_log.InfoFormat("[USER MAIL LOCK]: Checking if user {0} has a registered email address", userID);
+
+            MySQLSuperManager dbm = GetLockedConnection();
+
+            try
+            {
+                // SQL-Abfrage zum Überprüfen, ob der Benutzer eine hinterlegte E-Mail-Adresse hat
+                string sql = "SELECT email FROM `UserAccounts` WHERE PrincipalID = ?userID";
+                string email = null;
+
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?userID", userID);
+
+                    using (MySqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            email = reader.GetString("email");
+                            m_log.InfoFormat("[USER MAIL LOCK]: User {0} email address is {1}", userID, email);
+                        }
+                    }
+                }
+
+                // Überprüfen, ob die E-Mail-Adresse leer ist oder null
+                if (string.IsNullOrEmpty(email))
+                {
+                    m_log.InfoFormat("[USER MAIL LOCK]: User {0} does not have a registered email address", userID);
+                    return false; // Benutzer hat keine hinterlegte E-Mail-Adresse
+                }
+
+                m_log.InfoFormat("[USER MAIL LOCK]: User {0} has a registered email address", userID);
+                return true; // Benutzer hat eine hinterlegte E-Mail-Adresse
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[USER MAIL LOCK]: Error checking user email: {0}", ex.Message);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+
+
+        private bool CheckGroupMoney(string agentId, string groupId)
+        {
+            m_log.InfoFormat("[CHECK GROUP MONEY]: Checking group membership for agentId: {0}, groupId: {1}", agentId, groupId);
+
+            // Überprüfen, ob die groupId gesetzt ist
+            if (string.IsNullOrEmpty(groupId))
+            {
+                m_log.Info("[CHECK GROUP MONEY]: groupId is empty, returning false");
+                return false; // Wenn die groupId nicht gesetzt ist, zurückgeben
+            }
+
+            MySQLSuperManager dbm = GetLockedConnection();
+
+            try
+            {
+                // SQL-Abfrage zum Überprüfen der Gruppenmitgliedschaft
+                string sql = "SELECT COUNT(*) FROM os_groups_membership WHERE PrincipalID = ?agentId AND GroupID = ?groupId";
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?agentId", agentId);
+                    cmd.Parameters.AddWithValue("?groupId", groupId);
+
+                    int count = Convert.ToInt32(cmd.ExecuteScalar());
+                    m_log.InfoFormat("[CHECK GROUP MONEY]: Query result: count={0}", count);
+                    return count > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[CHECK GROUP MONEY]: Error checking group membership: {0}", ex.Message);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
         
+        // Überprüfen, ob der Benutzer Mitglied der angegebenen Gruppe ist
+        private bool IsUserInGroup(string agentId, string groupId)
+        {
+            // IClientAPI
+            m_log.DebugFormat("[IsUserInGroup]: Checking group membership for agentId={0}, groupId={1}", agentId, groupId);
+
+            if (string.IsNullOrEmpty(groupId))
+            {
+                m_log.Debug("[IsUserInGroup]: groupId is empty, returning true");
+                return true; // Keine Einschränkung, wenn groupId nicht gesetzt ist
+            }
+
+            MySQLSuperManager dbm = GetLockedConnection();
+
+            try
+            {
+                // SQL-Abfrage zum Überprüfen der Gruppenmitgliedschaft
+                string sql = "SELECT COUNT(*) FROM os_groups_membership WHERE PrincipalID = ?agentId AND GroupID = ?groupId";
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?agentId", agentId);
+                    cmd.Parameters.AddWithValue("?groupId", groupId);
+
+                    int count = Convert.ToInt32(cmd.ExecuteScalar());
+                    m_log.DebugFormat("[IsUserInGroup]: Query result: count={0}", count);
+                    return count > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[IsUserInGroup]: Error checking group membership: {0}", ex.Message);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
+        }
+
         public new int CheckMaximumMoney(string userID, int m_CurrencyMaximum)
         {
             MySQLSuperManager dbm = GetLockedConnection();
-            //int m_CurrencyMaximum = 10000; // Beispielwert, sollte aus der Konfigurationsdatei MoneyServer.ini geladen werden
-            m_log.InfoFormat ("[CHECK MAXIMUM MONEY]: Currency Maximum: {0}", m_CurrencyMaximum);
+            m_log.InfoFormat("[CHECK MAXIMUM MONEY]: Checking for userID: {0}, Currency Maximum: {1}", userID, m_CurrencyMaximum);
 
             try
             {
                 // Ausnahmen für SYSTEM und BANKER
                 if (userID == "SYSTEM" || userID == "BANKER" || userID == m_bankerAvatar)
                 {
+                    m_log.InfoFormat("[CHECK MAXIMUM MONEY]: User {0} is SYSTEM or BANKER, skipping check.", userID);
                     return 0; // Keine Begrenzung für diese Benutzer
                 }
 
@@ -796,6 +958,7 @@ namespace OpenSim.Grid.MoneyServer
                         if (reader.Read())
                         {
                             currentBalance = reader.GetInt32("balance");
+                            m_log.InfoFormat("[CHECK MAXIMUM MONEY]: Current balance for user {0} is {1}", userID, currentBalance);
                         }
                     }
                 }
@@ -814,15 +977,16 @@ namespace OpenSim.Grid.MoneyServer
                         cmd.ExecuteNonQuery();
                     }
 
-                    m_log.InfoFormat("[CheckMaximumMoney]: Reduced balance for user {0} by {1} to enforce maximum limit of {2}", userID, excessAmount, m_CurrencyMaximum);
+                    m_log.InfoFormat("[CHECK MAXIMUM MONEY]: Reduced balance for user {0} by {1} to enforce maximum limit of {2}", userID, excessAmount, m_CurrencyMaximum);
                     return excessAmount; // Rückgabe des abgezogenen Betrags
                 }
 
+                m_log.InfoFormat("[CHECK MAXIMUM MONEY]: No adjustment needed for user {0}", userID);
                 return 0; // Keine Änderung, falls das Guthaben innerhalb des Limits liegt
             }
             catch (Exception ex)
             {
-                m_log.ErrorFormat("[CheckMaximumMoney]: Error checking and updating user balance: {0}", ex.Message);
+                m_log.ErrorFormat("[CHECK MAXIMUM MONEY]: Error checking and updating user balance: {0}", ex.Message);
                 throw;
             }
             finally
@@ -830,9 +994,6 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
-
-
-
 
         private Hashtable ExtractXmlRpcParams(XmlDocument doc)
         {
@@ -919,7 +1080,7 @@ namespace OpenSim.Grid.MoneyServer
             // Berechnung und Antwortvorbereitung
             Hashtable currencyResponse = new Hashtable
             {
-                { "estimatedCost", amount * 0.01 }, // Beispielberechnung für Kosten
+                { "estimatedCost", amount * 0.01 }, // Berechnung für Kosten
                 { "currencyBuy", amount }
             };
 
