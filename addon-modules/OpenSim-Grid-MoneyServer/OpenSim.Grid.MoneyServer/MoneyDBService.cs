@@ -1139,15 +1139,5 @@ namespace OpenSim.Grid.MoneyServer
             };
         }
 
-
-
-
-
-
-
-
-
-
-
     }
 }

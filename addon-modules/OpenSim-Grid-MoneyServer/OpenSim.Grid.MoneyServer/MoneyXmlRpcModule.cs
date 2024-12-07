@@ -16,25 +16,18 @@
  */
 
 using log4net;
-
 using MySql.Data.MySqlClient;
-
 using Nini.Config;
-
 using NSL.Certificate.Tools;
 using NSL.Network.XmlRpc;
-
 using Nwc.XmlRpc;
-
 using OpenMetaverse;
-
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using OpenSim.Framework;
 using OpenSim.Framework.Servers.HttpServer;
 using OpenSim.Modules.Currency;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Services.Interfaces;
-
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -47,9 +40,10 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Transactions;
 using System.Xml;
-
 using static Mono.Security.X509.X520;
 using static OpenMetaverse.DllmapConfigHelper;
+using OpenSim.Server.Base;
+using OpenSim.Framework.Console;
 
 
 namespace OpenSim.Grid.MoneyServer
@@ -108,6 +102,8 @@ namespace OpenSim.Grid.MoneyServer
         private string m_certFilename = "";
         private string m_certPassword = "";
 
+        
+
         // SSL settings
         private string m_sslCommonName = "";
 
@@ -134,6 +130,8 @@ namespace OpenSim.Grid.MoneyServer
         private long TicksToEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks;
 
         private IMoneyDBService m_moneyDBService;
+        // Konfig fuer Konsolenbefehle.
+        private IConfigSource m_config;
         private IMoneyServiceCore m_moneyCore;
 
         protected IConfig m_server_config;
@@ -161,7 +159,7 @@ namespace OpenSim.Grid.MoneyServer
         /// <param name="opensimVersion">The opensim version.</param>
         /// <param name="moneyDBService">The money database service.</param>
         /// <param name="moneyCore">The money core.</param>
-        public void Initialise(string opensimVersion, IMoneyDBService moneyDBService, IMoneyServiceCore moneyCore)
+        public void Initialise(string opensimVersion, IMoneyDBService moneyDBService, IMoneyServiceCore moneyCore, IConfigSource config)
         {
             ArgumentNullException.ThrowIfNull(moneyDBService);
 
@@ -175,8 +173,6 @@ namespace OpenSim.Grid.MoneyServer
 
             // Get certificate configuration
             var certConfig = m_moneyCore.GetCertConfig() ?? throw new InvalidOperationException("Certificate configuration is not available");
-
-
 
             // Load configuration values
             m_defaultBalance = serverConfig.GetInt("DefaultBalance", m_defaultBalance);
@@ -285,6 +281,12 @@ namespace OpenSim.Grid.MoneyServer
             {
                 m_log.Info("[MONEY XMLRPC]: CheckServerCert is false.");
             }
+
+            m_moneyDBService = moneyDBService;
+            m_config = config;
+
+            // Rufe die RegisterConsoleCommands Methode auf
+            RegisterConsoleCommands(MainConsole.Instance); // Aufruf der Initialisierung der Konsolenbefehle
 
             m_sessionDic = m_moneyCore.GetSessionDic();
             m_secureSessionDic = m_moneyCore.GetSecureSessionDic();
@@ -653,7 +655,7 @@ namespace OpenSim.Grid.MoneyServer
         // ##################     Currency Buy     ##################
         #region Currency Buy
 
-
+        /*
         private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
             m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Process Starting...");
@@ -804,7 +806,136 @@ namespace OpenSim.Grid.MoneyServer
                 httpResponse.StatusCode = 500;
                 httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
             }
+        }*/
+
+        private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
+        {
+            m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Process Starting...");
+
+            if (httpRequest == null || httpResponse == null)
+            {
+                m_log.Error("[CURRENCY PROCESS PHP]: Invalid request or response object.");
+                httpResponse.StatusCode = 400;
+                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid request</response>");
+                return;
+            }
+
+            try
+            {
+                string requestBody;
+                using (var reader = new StreamReader(httpRequest.InputStream, Encoding.UTF8))
+                {
+                    requestBody = reader.ReadToEnd();
+                }
+
+                XmlDocument doc = new XmlDocument();
+                doc.LoadXml(requestBody);
+
+                XmlNode methodNameNode = doc.SelectSingleNode("/methodCall/methodName");
+                if (methodNameNode == null)
+                {
+                    throw new Exception("Missing method name in XML-RPC request.");
+                }
+
+                string methodName = methodNameNode.InnerText;
+
+                Hashtable parameters = ExtractXmlRpcParams(doc);
+
+                string agentId = parameters["agentId"]?.ToString();
+                string secureSessionId = parameters["secureSessionId"]?.ToString();
+                int currencyBuy = int.Parse(parameters["currencyBuy"]?.ToString() ?? "0");
+
+                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - AgentId: {0}, CurrencyBuy: {1}, SecureSessionId: {2}", agentId, currencyBuy, secureSessionId);
+
+                string transactionID = parameters["transactionID"]?.ToString();
+                string userID = parameters["agentId"]?.ToString();
+                int amount = int.Parse(parameters["currencyBuy"]?.ToString() ?? "0");
+
+                if (string.IsNullOrEmpty(transactionID))
+                {
+                    transactionID = secureSessionId;
+                }
+
+                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - transactionID: {0}, userID: {1}, amount: {2}", transactionID, userID, amount);
+
+                if (m_CurrencyGroupOnly && m_CurrencyGroupID != "00000000-0000-0000-0000-000000000000" && !IsUserInGroup(agentId, m_CurrencyGroupID))
+                {
+                    m_log.InfoFormat("[CURRENCY PROCESS PHP]: User {0} is not a member of the required group {1}.", agentId, m_CurrencyGroupID);
+                    httpResponse.StatusCode = 403;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>User is not a member of the required group</response>");
+                    return;
+                }
+
+                if (m_UserMailLock && !UserMailLock(agentId))
+                {
+                    m_log.InfoFormat("[CURRENCY PROCESS PHP]: User {0} does not have a registered email address.", agentId);
+                    httpResponse.StatusCode = 403;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>User does not have a registered email address</response>");
+                    return;
+                }
+
+                if (m_CurrencyOnOff != "off" && !CheckGroupMoney(agentId, m_CurrencyGroupID))
+                {
+                    m_log.Info("[CURRENCY PROCESS PHP]: Currency purchase is turned off for this user.");
+                    httpResponse.StatusCode = 403;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Currency purchase is turned off</response>");
+                    return;
+                }
+
+                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Maximum loaded: {0}", m_CurrencyMaximum);
+
+                if (methodName == "getCurrencyQuote")
+                {
+                    Hashtable quoteResponse = PerformGetCurrencyQuote(agentId, currencyBuy, secureSessionId);
+
+                    int excessAmount = CheckMaximumMoney(agentId, m_CurrencyMaximum);
+                    if (excessAmount > 0)
+                    {
+                        quoteResponse["message"] = $"Your balance was reduced by {excessAmount} to enforce the maximum limit.";
+                    }
+
+                    XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = quoteResponse };
+                    httpResponse.StatusCode = 200;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
+                }
+                else if (methodName == "buyCurrency")
+                {
+                    Hashtable purchaseResponse = PerformBuyCurrency(agentId, currencyBuy, secureSessionId);
+
+                    if ((bool)purchaseResponse["success"])
+                    {
+                        m_log.Info("[CURRENCY PROCESS PHP]: Purchase successful. Proceeding to credit currency.");
+                        PerformMoneyTransfer("BANKER", agentId, currencyBuy);
+                        UpdateBalance(agentId, "Currency purchase successful.");
+
+                        CheckMaximumMoney(agentId, m_CurrencyMaximum);
+
+                        XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = purchaseResponse };
+                        httpResponse.StatusCode = 200;
+                        httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
+                    }
+                    else
+                    {
+                        m_log.Error("[CURRENCY PROCESS PHP]: Currency purchase failed.");
+                        httpResponse.StatusCode = 400;
+                        httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Currency purchase failed</response>");
+                    }
+                }
+                else
+                {
+                    m_log.ErrorFormat("[CURRENCY PROCESS PHP]: Unknown method name: {0}", methodName);
+                    httpResponse.StatusCode = 400;
+                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[CURRENCY PROCESS PHP]: Error processing request. Error: {0}", ex.ToString());
+                httpResponse.StatusCode = 500;
+                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
+            }
         }
+
 
         private bool UserMailLock(string userID)
         {
@@ -853,7 +984,7 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-
+        /*
         private bool CheckGroupMoney(string agentId, string groupId)
         {
             m_log.InfoFormat("[CHECK GROUP MONEY]: Checking group membership for agentId: {0}, groupId: {1}", agentId, groupId);
@@ -890,8 +1021,45 @@ namespace OpenSim.Grid.MoneyServer
             {
                 dbm.Release();
             }
+        }*/
+
+        private bool CheckGroupMoney(string agentId, string groupId)
+        {
+            m_log.InfoFormat("[CHECK GROUP MONEY]: Checking group membership for agentId: {0}, groupId: {1}", agentId, groupId);
+
+            if (string.IsNullOrEmpty(groupId) || groupId == "00000000-0000-0000-0000-000000000000")
+            {
+                m_log.Info("[CHECK GROUP MONEY]: groupId is empty or set to accept all groups, returning true");
+                return true;
+            }
+
+            MySQLSuperManager dbm = GetLockedConnection();
+
+            try
+            {
+                string sql = "SELECT COUNT(*) FROM os_groups_membership WHERE PrincipalID = ?agentId AND GroupID = ?groupId";
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?agentId", agentId);
+                    cmd.Parameters.AddWithValue("?groupId", groupId);
+
+                    int count = Convert.ToInt32(cmd.ExecuteScalar());
+                    m_log.InfoFormat("[CHECK GROUP MONEY]: Query result: count={0}", count);
+                    return count > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[CHECK GROUP MONEY]: Error checking group membership: {0}", ex.Message);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
+            }
         }
-        
+
+
         // Überprüfen, ob der Benutzer Mitglied der angegebenen Gruppe ist
         private bool IsUserInGroup(string agentId, string groupId)
         {
@@ -2886,6 +3054,7 @@ namespace OpenSim.Grid.MoneyServer
             return response;
         }
 
+
         #endregion
         // ##################     helper          ##################
         #region helper
@@ -3435,8 +3604,309 @@ namespace OpenSim.Grid.MoneyServer
             return false;
         }
 
-        #endregion
+        // #########################################
+        // Cashbook ausgabe Transaktionen der User.
+        // #########################################
 
+        public void GetCashbookBalance(string userID)
+        {
+            int balance = 0;
+            string query = "SELECT balance FROM balances WHERE user = ?userID";
+
+            MySQLSuperManager dbm = ((MoneyDBService)m_moneyDBService).GetLockedConnection();
+
+            try
+            {
+                using (MySqlCommand cmd = new MySqlCommand(query, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?userID", userID);
+                    object result = cmd.ExecuteScalar();
+                    m_log.InfoFormat("[Cashbook]: Query executed for userID: {0}, result: {1}", userID, result);
+                    if (result != null)
+                    {
+                        balance = Convert.ToInt32(result);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[Cashbook]: Error getting balance for userID: {0}. Exception: {1}", userID, ex);
+            }
+            finally
+            {
+                dbm.Release();
+            }
+
+            m_log.InfoFormat("[Cashbook]: User: {0}, Balance: {1}", userID, balance);
+        }
+
+
+        public void GetCashbookTotalSales(string userID)
+        {
+            List<CashbookTotalSalesData> totalSalesList = new List<CashbookTotalSalesData>();
+            string query = "SELECT objectUUID, TotalCount, TotalAmount FROM totalsales WHERE user = ?userID";
+
+            MySQLSuperManager dbm = ((MoneyDBService)m_moneyDBService).GetLockedConnection();
+
+            try
+            {
+                using (MySqlCommand cmd = new MySqlCommand(query, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?userID", userID);
+
+                    using (MySqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            CashbookTotalSalesData data = new CashbookTotalSalesData
+                            {
+                                ObjectUUID = reader.GetString("objectUUID"),
+                                TotalCount = reader.GetInt32("TotalCount"),
+                                TotalAmount = reader.GetInt32("TotalAmount")
+                            };
+                            totalSalesList.Add(data);
+                            m_log.InfoFormat("[Cashbook]: Found sale: ObjectUUID={0}, TotalCount={1}, TotalAmount={2}", data.ObjectUUID, data.TotalCount, data.TotalAmount);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[Cashbook]: Error getting total sales for userID: {0}. Exception: {1}", userID, ex);
+            }
+            finally
+            {
+                dbm.Release();
+            }
+
+            m_log.InfoFormat("[Cashbook]: User: {0}, Total Sales:", userID);
+            foreach (var sale in totalSalesList)
+            {
+                m_log.InfoFormat("ObjectUUID: {0}, TotalCount: {1}, TotalAmount: {2}", sale.ObjectUUID, sale.TotalCount, sale.TotalAmount);
+            }
+        }
+
+
+
+        public void GetCashbookTransactions(string userID)
+        {
+            List<CashbookTransactionData> transactionList = new List<CashbookTransactionData>();
+            string query = "SELECT receiver, amount, senderBalance, receiverBalance, objectName, commonName, description FROM transactions WHERE sender = ?userID OR receiver = ?userID";
+
+            MySQLSuperManager dbm = ((MoneyDBService)m_moneyDBService).GetLockedConnection();
+
+            try
+            {
+                using (MySqlCommand cmd = new MySqlCommand(query, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?userID", userID);
+
+                    using (MySqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            CashbookTransactionData data = new CashbookTransactionData
+                            {
+                                Receiver = reader.GetString("receiver"),
+                                Amount = reader.GetInt32("amount"),
+                                SenderBalance = reader.GetInt32("senderBalance"),
+                                ReceiverBalance = reader.GetInt32("receiverBalance"),
+                                ObjectName = reader.GetString("objectName"),
+                                CommonName = reader.GetString("commonName"),
+                                Description = reader.GetString("description")
+                            };
+                            transactionList.Add(data);
+                            m_log.InfoFormat("[Cashbook]: Found transaction: Receiver={0}, Amount={1}, SenderBalance={2}, ReceiverBalance={3}, ObjectName={4}, CommonName={5}, Description={6}",
+                                data.Receiver, data.Amount, data.SenderBalance, data.ReceiverBalance, data.ObjectName, data.CommonName, data.Description);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[Cashbook]: Error getting transactions for userID: {0}. Exception: {1}", userID, ex);
+            }
+            finally
+            {
+                dbm.Release();
+            }
+
+            m_log.InfoFormat("[Cashbook]: User: {0}, Transactions:", userID);
+            foreach (var transaction in transactionList)
+            {
+                m_log.InfoFormat("Receiver: {0}, Amount: {1}, SenderBalance: {2}, ReceiverBalance: {3}, ObjectName: {4}, CommonName: {5}, Description: {6}",
+                    transaction.Receiver, transaction.Amount, transaction.SenderBalance, transaction.ReceiverBalance, transaction.ObjectName, transaction.CommonName, transaction.Description);
+            }
+        }
+
+
+
+        // Aktualisierte Methode zur Initialisierung der Konsolenbefehle
+        public void RegisterConsoleCommands(ICommandConsole console)
+        {
+            console.Commands.AddCommand(
+                "MoneyXmlRpcModule",
+                false,
+                "getbalance",
+                "getbalance <userID> or <first name> <last name>",
+                "Get the balance for the specified user",
+                HandleGetCashbookBalance);
+
+            console.Commands.AddCommand(
+                "MoneyXmlRpcModule",
+                false,
+                "gettotalsales",
+                "gettotalsales <userID> or <first name> <last name>",
+                "Get the total sales for the specified user",
+                HandleGetCashbookTotalSales);
+
+            console.Commands.AddCommand(
+                "MoneyXmlRpcModule",
+                false,
+                "gettransactions",
+                "gettransactions <userID> or <first name> <last name>",
+                "Get the transactions for the specified user",
+                HandleGetCashbookTransactions);
+        }
+
+        private void HandleGetCashbookBalance(string module, string[] cmdparams)
+        {
+            if (cmdparams.Length < 3)
+            {
+                m_log.Info("[Cashbook]: Usage: getbalance <userID> or <first name> <last name>");
+                return;
+            }
+
+            string userID = string.Join(" ", cmdparams, 2, cmdparams.Length - 2).Trim();
+
+            // Prüfen, ob userID eine gültige UUID ist
+            if (Guid.TryParse(userID, out Guid _))
+            {
+                m_log.InfoFormat("[Cashbook]: userID is a valid UUID: {0}", userID);
+                GetCashbookBalance(userID);
+            }
+            else
+            {
+                m_log.InfoFormat("[Cashbook]: userID is a name: {0}", userID);
+                GetCashbookBalanceByName(userID);
+            }
+        }
+
+        private void HandleGetCashbookTotalSales(string module, string[] cmdparams)
+        {
+            if (cmdparams.Length < 3)
+            {
+                m_log.Info("[Cashbook]: Usage: gettotalsales <userID> or <first name> <last name>");
+                return;
+            }
+
+            string userID = string.Join(" ", cmdparams, 2, cmdparams.Length - 2).Trim();
+
+            // Prüfen, ob userID eine gültige UUID ist
+            if (Guid.TryParse(userID, out Guid _))
+            {
+                m_log.InfoFormat("[Cashbook]: userID is a valid UUID: {0}", userID);
+                GetCashbookTotalSales(userID);
+            }
+            else
+            {
+                m_log.InfoFormat("[Cashbook]: userID is a name: {0}", userID);
+                GetCashbookTotalSalesByName(userID);
+            }
+        }
+
+        private void HandleGetCashbookTransactions(string module, string[] cmdparams)
+        {
+            if (cmdparams.Length < 3)
+            {
+                m_log.Info("[Cashbook]: Usage: gettransactions <userID> or <first name> <last name>");
+                return;
+            }
+
+            string userID = string.Join(" ", cmdparams, 2, cmdparams.Length - 2).Trim();
+
+            // Prüfen, ob userID eine gültige UUID ist
+            if (Guid.TryParse(userID, out Guid _))
+            {
+                m_log.InfoFormat("[Cashbook]: userID is a valid UUID: {0}", userID);
+                GetCashbookTransactions(userID);
+            }
+            else
+            {
+                m_log.InfoFormat("[Cashbook]: userID is a name: {0}", userID);
+                GetCashbookTransactionsByName(userID);
+            }
+        }
+
+        private void GetCashbookBalanceByName(string name)
+        {
+            string userID = GetUUIDFromName(name);
+            if (string.IsNullOrEmpty(userID))
+            {
+                m_log.InfoFormat("[Cashbook]: No UUID found for user: {0}", name);
+                return;
+            }
+            GetCashbookBalance(userID);
+        }
+
+        private void GetCashbookTotalSalesByName(string name)
+        {
+            string userID = GetUUIDFromName(name);
+            if (string.IsNullOrEmpty(userID))
+            {
+                m_log.InfoFormat("[Cashbook]: No UUID found for user: {0}", name);
+                return;
+            }
+            GetCashbookTotalSales(userID);
+        }
+
+        private void GetCashbookTransactionsByName(string name)
+        {
+            string userID = GetUUIDFromName(name);
+            if (string.IsNullOrEmpty(userID))
+            {
+                m_log.InfoFormat("[Cashbook]: No UUID found for user: {0}", name);
+                return;
+            }
+            GetCashbookTransactions(userID);
+        }
+
+        private string GetUUIDFromName(string name)
+        {
+            string query = "SELECT PrincipalID FROM UserAccounts WHERE CONCAT(FirstName, ' ', LastName) = ?name";
+            string userID = null;
+
+            MySQLSuperManager dbm = ((MoneyDBService)m_moneyDBService).GetLockedConnection();
+
+            try
+            {
+                using (MySqlCommand cmd = new MySqlCommand(query, dbm.Manager.dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?name", name);
+                    using (MySqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            userID = reader.GetString("PrincipalID");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[Cashbook]: Error getting UUID for name: {0}. Exception: {1}", name, ex);
+            }
+            finally
+            {
+                dbm.Release();
+            }
+
+            return userID;
+        }
+
+
+
+        #endregion
 
     }
 
@@ -3444,6 +3914,25 @@ namespace OpenSim.Grid.MoneyServer
 // ##################     classes                ##################
 #region classes
 // Anfrage - Klassen für spezifische XML-RPC-Methoden
+
+public class CashbookTotalSalesData
+{
+    public string ObjectUUID { get; set; }
+    public int TotalCount { get; set; }
+    public int TotalAmount { get; set; }
+}
+
+public class CashbookTransactionData
+{
+    public string Receiver { get; set; }
+    public int Amount { get; set; }
+    public int SenderBalance { get; set; }
+    public int ReceiverBalance { get; set; }
+    public string ObjectName { get; set; }
+    public string CommonName { get; set; }
+    public string Description { get; set; }
+}
+
 public class CurrencyQuoteRequest
 {
     public string AgentId { get; set; }

@@ -352,8 +352,9 @@ internal class MoneyServerBase : BaseOpenSimServer, IMoneyServiceCore
         m_moneyDBService = new MoneyDBService();
         m_moneyDBService.Initialise(connectionString, MAX_DB_CONNECTION);
 
+        IConfigSource config = new IniConfigSource(); // Beispiel für das Erstellen einer IConfigSource
         m_moneyXmlRpcModule = new MoneyXmlRpcModule(connectionString, MAX_DB_CONNECTION);
-        m_moneyXmlRpcModule.Initialise(m_version, m_moneyDBService, this);
+        m_moneyXmlRpcModule.Initialise(m_version, m_moneyDBService, this, config);
         m_moneyXmlRpcModule.PostInitialise();
     }
 
