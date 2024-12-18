@@ -1,118 +1,97 @@
 [Startup]
-;
-; Place to create a PID file
+; Path to create the PID file for identifying the process.
 PIDFile = "/tmp/money.pid"
 
-
 [MySql]
-;
-;Connection parameters of MySQL
-hostname = "localhost"
-database = "robust"
-username = "opensim"
-password = "opensim"
-
-pooling  = "true"
-port = "3306"
-
-MaxConnection = "25"
+; MySQL database connection settings:
+hostname = "localhost"           ; Hostname of the MySQL server.
+database = "robust"              ; Name of the database to use.
+username = "opensim"             ; Username for database access.
+password = "opensim"             ; Password for database access.
+pooling  = "true"                ; Use connection pooling (true/false).
+port = "3306"                    ; MySQL server port (default: 3306).
+MaxConnection = "25"             ; Maximum connections in the pool.
 
 [MoneyServer]
-; Port No. of this Server
+; Port number for the MoneyServer.
 ServerPort = 8008
 
-;Money Server IP address
-MoneyServerIPaddress = "http://127.0.0.1:8008"
-
-; If the user is not found in database,he/she will be created with the default balance.
-DefaultBalance = 1000
-
-; Maximum per day:
-TotalDay = 100;
-; Maximum per week:
-TotalWeek = 250;
-; Maximum per month:
-TotalMonth = 500;
-
-; General maximum:
-CurrencyMaximum = 20000;
-
-; Turn on money purchase = on turn off = off.
+; Enable or disable the currency system (on/off).
 CurrencyOnOff = on;
 
-; Buy money only for group true/false:
+; Maximum currency allowed for any user.
+CurrencyMaximum = 20000;
+
+; URL or IP address of the MoneyServer.
+MoneyServerIPaddress = "http://127.0.0.1:8008"
+
+; Default starting balance for new users.
+DefaultBalance = 1000
+
+; Restrict currency purchases to specific group members (true/false).
 CurrencyGroupOnly = true;
-; Buy money only for group the group ID
+; Group ID required for currency purchases (UUID format).
 CurrencyGroupID = "00000000-0000-0000-0000-000000000000";
 
-; Verify the email address and anyone without it cannot buy money.
+; Require email verification for currency purchases (true/false).
 UserMailLock = true;
 
-; Log XML-RPC request to file or console based on debug settings
-;DebugConsole = true
-;DebugFile = false
- 
-; Is amount==0 transaction enable? Default is false.
+; Enable transactions with a 0 amount (default: false).
 EnableAmountZero = true
 
-; The cost of each currency unit is calculated by multiplying the currency amount by the calculate currency value.
+; Cost multiplier for each unit of currency.
 CalculateCurrency = 10
 
-; If "00000000-0000-0000-0000-000000000000" is specified, all avatars can get money from system.
-; If "" is specified, nobody can get money.
+; UUID of the avatar designated as the banker. 
+; Use "00000000-0000-0000-0000-000000000000" to allow all avatars, or leave blank to disable.
 BankerAvatar = "00000000-0000-0000-0000-000000000000"
 
-; Send/Move money to/from avatar by Money Script 
+; Enable forced money transfers via scripts (true/false).
 EnableForceTransfer = "true"
+; Allow scripts to send money (true/false).
 EnableScriptSendMoney = "true"
+
+; Default balances for HyperGrid and guest users.
 HGAvatarDefaultBalance = "500"
 GuestAvatarDefaultBalance = "500"
 
+; Access key and IP address for MoneyScript integration.
 MoneyScriptAccessKey  = "123456789"
 MoneyScriptIPaddress  = "127.0.0.1"
+
+; Enable currency support for HyperGrid and guest avatars (true/false).
 EnableHGAvatar = "true"
 EnableGuestAvatar = "true"
 
-;
-; Message that displayed in blue dialog, when balance is updated.
-; If "" is specified, blue dialog is not displayed.
-; You can use {0} and {1} in message string.
-; {0} means amount and {1} means avatar name or object owner name.
-BalanceMessageSendGift     = "Sent Gift L${0} to {1}."						;; for send gift to other avatar
-BalanceMessageReceiveGift  = "Received Gift L${0} from {1}."				;; for receieve gift from other avatar
-BalanceMessagePayCharge    = "Paid the Money L${0} for creation."			;; for upload and group creation charge
-BalanceMessageBuyObject    = "Bought the Object {2} from {1} by L${0}."		;; for buy the object
-BalanceMessageSellObject   = "{1} bought the Object {2} by L${0}."          ;; for sell the object
-BalanceMessageLandSale     = "Paid the Money L${0} for Land."				;; for buy the land
-BalanceMessageScvLandSale  = "Paid the Money L${0} for Land."				;; for get the money of the sold land
-BalanceMessageGetMoney     = "Got the Money L${0} from {1}."				;; for get the money from object by llGiveMoney()
-BalanceMessageBuyMoney     = "Bought the Money L${0}."						;; for buy the money from system
-BalanceMessageRollBack     = "RollBack the Transaction: L${0} from/to {1}."	;; when roll back ocuurred
-BalanceMessageSendMoney    = "Paid the Money L${0} to {1}."					;; for sender of sending the money
-BalanceMessageReceiveMoney = "Received L${0} from {1}."						;; for receive the money
+; Messages displayed to users when their balance is updated. 
+; Use {0} for the amount, {1} for the other party's name, and {2} for object names.
+BalanceMessageSendGift     = "Sent Gift L${0} to {1}."                ; For sending gifts.
+BalanceMessageReceiveGift  = "Received Gift L${0} from {1}."         ; For receiving gifts.
+BalanceMessagePayCharge    = "Paid the Money L${0} for creation."    ; For charges (e.g., uploads).
+BalanceMessageBuyObject    = "Bought the Object {2} from {1} by L${0}." ; For object purchases.
+BalanceMessageSellObject   = "{1} bought the Object {2} by L${0}."   ; For object sales.
+BalanceMessageLandSale     = "Paid the Money L${0} for Land."        ; For land purchases.
+BalanceMessageScvLandSale  = "Paid the Money L${0} for Land."        ; For land sales revenue.
+BalanceMessageGetMoney     = "Got the Money L${0} from {1}."         ; For receiving money from objects.
+BalanceMessageBuyMoney     = "Bought the Money L${0}."               ; For currency purchases.
+BalanceMessageRollBack     = "RollBack the Transaction: L${0} from/to {1}." ; For rollbacks.
+BalanceMessageSendMoney    = "Paid the Money L${0} to {1}."          ; For sending money.
+BalanceMessageReceiveMoney = "Received L${0} from {1}."              ; For receiving money.
 
 [Certificate]
-;
-; Certification Configuration
-;
+; Certificate settings for secure connections:
 
-; CA Cert to check Client/Server Cert
+; CA certificate to validate client/server certificates.
 ;CACertFilename = "cacert.crt"
 
-;
-; HTTPS Server Cert (Server Mode)
-;ServerCertFilename = "SineWaveCert.pfx"
-;ServerCertPassword = "opensim"
+; HTTPS server certificate (server mode).
 ;ServerCertFilename = "server_cert.p12"
 ;ServerCertPassword = "opensim"
 
-; Client Authentication from Region Server
+; Enable client certificate verification (true/false).
 CheckClientCert = false
-;ClientCrlFilename = "clcrl.crt"
 
-
-;
-; XML RPC to Region Server (Client Mode)
+; Enable server certificate verification (true/false).
 CheckServerCert = false
 ;ClientCertFilename = "client_cert.p12"
 ;ClientCertPassword = "opensim"
