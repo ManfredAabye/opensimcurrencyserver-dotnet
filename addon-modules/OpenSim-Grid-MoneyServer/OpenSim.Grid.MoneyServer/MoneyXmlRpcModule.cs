@@ -296,15 +296,13 @@ namespace OpenSim.Grid.MoneyServer
             RegisterStreamHandlers();
         }
 
-
-        /// <summary>Registers stream handlers for PHP scripts.</summary>
         private void RegisterStreamHandlers()
         {
-            //m_log.Info("[MONEY XMLRPC]: Registering currency.php  handlers.");
-            m_httpServer.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", CurrencyProcessPHP));
+            m_log.Info("[MONEY XMLRPC]: Registering currency.php handlers.");
+            m_httpServer.AddSimpleStreamHandler(new CurrencyStreamHandler("/currency.php", CurrencyProcessPHP));
 
-            //m_log.Info("[MONEY XMLRPC]: Registering landtool.php  handlers.");
-            m_httpServer.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", LandtoolProcessPHP));
+            m_log.Info("[MONEY XMLRPC]: Registering landtool.php handlers.");
+            m_httpServer.AddSimpleStreamHandler(new LandtoolStreamHandler("/landtool.php", LandtoolProcessPHP));
 
             m_log.InfoFormat("[MONEY MODULE]: Registered /currency.php and /landtool.php handlers on Port: {0}", m_httpServer.Port);
         }
@@ -3913,7 +3911,6 @@ namespace OpenSim.Grid.MoneyServer
 }
 // ##################     classes                ##################
 #region classes
-// Anfrage - Klassen für spezifische XML-RPC-Methoden
 
 public class CashbookTotalSalesData
 {
