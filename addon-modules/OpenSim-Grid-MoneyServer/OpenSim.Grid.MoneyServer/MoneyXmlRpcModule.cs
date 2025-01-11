@@ -74,7 +74,7 @@ namespace OpenSim.Grid.MoneyServer
         public int m_CurrencyMaximum;
         // Geldkauf abschalten:
         public string m_CurrencyOnOff;
-        // Geldkauf nur für Gruppe:
+        // Geldkauf nur fÃ¼r Gruppe:
         public bool m_CurrencyGroupOnly = false;
         public bool m_UserMailLock = false;
         public string m_CurrencyGroupName = "";
@@ -363,9 +363,9 @@ namespace OpenSim.Grid.MoneyServer
         // ##################     Land Buy         ##################
         #region Land Buy
 
-        // Flexibilität: Die gesamte Logik wird innerhalb von LandtoolProcessPHP und ihren Hilfsfunktionen abgewickelt.
-        // Fehlerbehandlung: Umfassende Überprüfung auf fehlende Daten oder Fehler während der Verarbeitung.
-        // Unabhängigkeit: Keine Abhängigkeit von externen Funktionen oder Modulen.
+        // FlexibilitÃ¤t: Die gesamte Logik wird innerhalb von LandtoolProcessPHP und ihren Hilfsfunktionen abgewickelt.
+        // Fehlerbehandlung: Umfassende ÃœberprÃ¼fung auf fehlende Daten oder Fehler wÃ¤hrend der Verarbeitung.
+        // UnabhÃ¤ngigkeit: Keine AbhÃ¤ngigkeit von externen Funktionen oder Modulen.
 
         private void LandtoolProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
@@ -400,7 +400,7 @@ namespace OpenSim.Grid.MoneyServer
                 string methodName = methodNameNode.InnerText;
                 XmlNodeList members = doc.SelectNodes("//param/value/struct/member");
 
-                // Variablen für Landanfrage initialisieren
+                // Variablen fÃ¼r Landanfrage initialisieren
                 string agentId = null, secureSessionId = null, language = null;
                 int billableArea = 0, currencyBuy = 0;
 
@@ -432,7 +432,7 @@ namespace OpenSim.Grid.MoneyServer
                     m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Preflight Land Purchase Request for AgentId: {0}, BillableArea: {1}",
                         agentId, billableArea);
 
-                    // Preflight-Prüfung
+                    // Preflight-PrÃ¼fung
                     Hashtable preflightResponse = PerformPreflightLandCheck(agentId, billableArea, currencyBuy, language, secureSessionId);
                     if (!(bool)preflightResponse["success"])
                     {
@@ -442,7 +442,7 @@ namespace OpenSim.Grid.MoneyServer
                         return;
                     }
 
-                    // Erfolgreiche Antwort zurückgeben
+                    // Erfolgreiche Antwort zurÃ¼ckgeben
                     httpResponse.StatusCode = 200;
                     XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = preflightResponse };
                     httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
@@ -452,10 +452,10 @@ namespace OpenSim.Grid.MoneyServer
                     m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing Land Purchase Request for AgentId: {0}, BillableArea: {1}",
                         agentId, billableArea);
 
-                    // Landkauf durchführen
+                    // Landkauf durchfÃ¼hren
                     Hashtable purchaseResponse = ProcessLandPurchase(agentId, billableArea, currencyBuy, language, secureSessionId);
 
-                    // Überprüfung der Antwort
+                    // ÃœberprÃ¼fung der Antwort
                     if (!(bool)purchaseResponse["success"])
                     {
                         m_log.Error("[MONEY XMLRPC MODULE]: Land purchase failed.");
@@ -464,7 +464,7 @@ namespace OpenSim.Grid.MoneyServer
                         return;
                     }
 
-                    // Erfolgreiche Antwort zurückgeben
+                    // Erfolgreiche Antwort zurÃ¼ckgeben
                     httpResponse.StatusCode = 200;
                     XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = purchaseResponse };
                     httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
@@ -484,13 +484,13 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        // Beispiel einer Funktion zur Preflight-Prüfung
+        // Beispiel einer Funktion zur Preflight-PrÃ¼fung
         // PerformPreflightLandCheck:
-        // Simuliert die Preflight-Prüfung für den Landkauf.
-        // Gibt eine Erfolgsmeldung in Form einer Hashtable zurück.
+        // Simuliert die Preflight-PrÃ¼fung fÃ¼r den Landkauf.
+        // Gibt eine Erfolgsmeldung in Form einer Hashtable zurÃ¼ck.
         private Hashtable PerformPreflightLandCheck(string agentId, int billableArea, int currencyBuy, string language, string secureSessionId)
         {
-            // Beispielhafte Logik für Preflight-Prüfung
+            // Beispielhafte Logik fÃ¼r Preflight-PrÃ¼fung
             m_log.InfoFormat("[MONEY XMLRPC MODULE]: Preflight check for AgentId: {0}, Area: {1}, CurrencyBuy: {2}", agentId, billableArea, currencyBuy);
 
             // Erfolg simulieren
@@ -506,11 +506,11 @@ namespace OpenSim.Grid.MoneyServer
 
         // Beispiel einer Funktion zur Bearbeitung eines Landkaufs
         // ProcessLandPurchase:
-        // Simuliert die Durchführung des Landkaufs.
-        // Gibt ebenfalls eine Erfolgsmeldung als Hashtable zurück.
+        // Simuliert die DurchfÃ¼hrung des Landkaufs.
+        // Gibt ebenfalls eine Erfolgsmeldung als Hashtable zurÃ¼ck.
         private Hashtable ProcessLandPurchase(string agentId, int billableArea, int currencyBuy, string language, string secureSessionId)
         {
-            // Beispielhafte Logik für Landkauf
+            // Beispielhafte Logik fÃ¼r Landkauf
             m_log.InfoFormat("[MONEY XMLRPC MODULE]: Processing land purchase for AgentId: {0}, Area: {1}, CurrencyBuy: {2}", agentId, billableArea, currencyBuy);
 
             // Erfolg simulieren
@@ -653,159 +653,6 @@ namespace OpenSim.Grid.MoneyServer
         // ##################     Currency Buy     ##################
         #region Currency Buy
 
-        /*
-        private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
-        {
-            m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Process Starting...");
-
-            // Überprüfe, ob die Anfrage oder die Antwort null ist
-            if (httpRequest == null || httpResponse == null)
-            {
-                m_log.Error("[CURRENCY PROCESS PHP]: Invalid request or response object.");
-                httpResponse.StatusCode = 400;
-                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid request</response>");
-                return;
-            }
-            try
-            {
-                // Request Body auslesen
-                string requestBody;
-                using (var reader = new StreamReader(httpRequest.InputStream, Encoding.UTF8))
-                {
-                    requestBody = reader.ReadToEnd();
-                }
-
-                // XML-Daten parsen
-                XmlDocument doc = new XmlDocument();
-                doc.LoadXml(requestBody);
-
-                // Methode extrahieren
-                XmlNode methodNameNode = doc.SelectSingleNode("/methodCall/methodName");
-                if (methodNameNode == null)
-                {
-                    throw new Exception("Missing method name in XML-RPC request.");
-                }
-
-                string methodName = methodNameNode.InnerText;
-
-                // Parameter extrahieren
-                Hashtable parameters = ExtractXmlRpcParams(doc);
-
-                // AgentID, SecureSessionID und CurrencyBuy aus den Parametern extrahieren
-                string agentId = parameters["agentId"]?.ToString();
-                string secureSessionId = parameters["secureSessionId"]?.ToString();
-                int currencyBuy = int.Parse(parameters["currencyBuy"]?.ToString() ?? "0");
-
-                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - AgentId: {0}, CurrencyBuy: {1}, SecureSessionId: {2}", agentId, currencyBuy, secureSessionId);
-
-                // TransactionID und UserID aus den Parametern extrahieren
-                string transactionID = parameters["transactionID"]?.ToString();
-                string userID = parameters["agentId"]?.ToString();
-                int amount = int.Parse(parameters["currencyBuy"]?.ToString() ?? "0");
-
-                // UUID für die Gruppe des Benutzers extrahieren
-                //string m_CurrencyGroupID = "da35d22a-fdbb-1116-90ba-60110ddff123"; // Beispielsgruppe
-
-                // Überprüfen, ob der Benutzer Mitglied der angegebenen Gruppe ist, nur wenn CurrencyGroupOnly = true
-                //bool CurrencyGroupOnly = true; // Beispielwert, sollte aus der Konfigurationsdatei geladen werden
-
-                // Überprüfen, ob der Benutzer Mitglied der angegebenen Gruppe ist, nur wenn CurrencyGroupOnly = true
-                if (m_CurrencyGroupOnly && !IsUserInGroup(agentId, m_CurrencyGroupID))
-                {
-                    m_log.InfoFormat("[CURRENCY PROCESS PHP]: User {0} is not a member of the required group {1}.", agentId, m_CurrencyGroupID);
-                    httpResponse.StatusCode = 403;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>User is not a member of the required group</response>");
-                    return;
-                }
-
-                // Überprüfen, ob der Benutzer eine hinterlegte E-Mail-Adresse hat
-                //if (!UserMailLock(agentId))
-                if (m_UserMailLock && !UserMailLock(agentId))
-                    {
-                    m_log.InfoFormat("[CURRENCY PROCESS PHP]: User {0} does not have a registered email address.", agentId);
-                    httpResponse.StatusCode = 403;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>User does not have a registered email address</response>");
-                    return;
-                }
-
-                if (string.IsNullOrEmpty(transactionID))
-                {
-                    transactionID = secureSessionId;
-                }
-
-                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Parsed values - transactionID: {0}, userID: {1}, amount: {2}", transactionID, userID, amount);
-
-                // Überprüfen, ob der Geldkauf abgeschaltet ist
-                //bool m_CurrencyOnOff = true; // Dieser Wert sollte aus der Konfigurationsdatei geladen werden
-                if (m_CurrencyOnOff != "off" && !CheckGroupMoney(agentId, m_CurrencyGroupID))
-                {
-                    m_log.Info("[CURRENCY PROCESS PHP]: Currency purchase is turned off for this user.");
-                    httpResponse.StatusCode = 403;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Currency purchase is turned off</response>");
-                    return;
-                }
-
-                // Currency Maximum aus der Konfigurationsdatei laden
-                //int m_CurrencyMaximum = 10000; // Beispielwert, sollte aus der Konfigurationsdatei geladen werden
-                m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Maximum loaded: {0}", m_CurrencyMaximum);
-
-                if (methodName == "getCurrencyQuote")
-                {
-                    // Währungsangebot abrufen
-                    Hashtable quoteResponse = PerformGetCurrencyQuote(agentId, currencyBuy, secureSessionId);
-
-                    // Besitz begrenzen auf ein Maximum
-                    int excessAmount = CheckMaximumMoney(agentId, m_CurrencyMaximum);
-                    if (excessAmount > 0)
-                    {
-                        quoteResponse["message"] = $"Your balance was reduced by {excessAmount} to enforce the maximum limit.";
-                    }
-
-                    XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = quoteResponse };
-                    httpResponse.StatusCode = 200;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
-                }
-                else if (methodName == "buyCurrency")
-                {
-                    // Währungskauf durchführen
-                    Hashtable purchaseResponse = PerformBuyCurrency(agentId, currencyBuy, secureSessionId);
-
-                    if ((bool)purchaseResponse["success"])
-                    {
-                        m_log.Info("[CURRENCY PROCESS PHP]: Purchase successful. Proceeding to credit currency.");
-                        // Gutschrift durchführen
-                        PerformMoneyTransfer("BANKER", agentId, currencyBuy);
-                        UpdateBalance(agentId, "Currency purchase successful.");
-
-                        // Besitz begrenzen auf ein Maximum
-                        CheckMaximumMoney(agentId, m_CurrencyMaximum);
-
-                        XmlRpcResponse xmlResponse = new XmlRpcResponse { Value = purchaseResponse };
-                        httpResponse.StatusCode = 200;
-                        httpResponse.RawBuffer = Encoding.UTF8.GetBytes(xmlResponse.ToString());
-                    }
-                    else
-                    {
-                        m_log.Error("[CURRENCY PROCESS PHP]: Currency purchase failed.");
-                        httpResponse.StatusCode = 400;
-                        httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Currency purchase failed</response>");
-                    }
-                }
-                else
-                {
-                    m_log.ErrorFormat("[CURRENCY PROCESS PHP]: Unknown method name: {0}", methodName);
-                    httpResponse.StatusCode = 400;
-                    httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Invalid method name</response>");
-                }
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[CURRENCY PROCESS PHP]: Error processing request. Error: {0}", ex.ToString());
-                httpResponse.StatusCode = 500;
-                httpResponse.RawBuffer = Encoding.UTF8.GetBytes("<response>Error</response>");
-            }
-        }*/
-
         private void CurrencyProcessPHP(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
             m_log.InfoFormat("[CURRENCY PROCESS PHP]: Currency Process Starting...");
@@ -943,7 +790,7 @@ namespace OpenSim.Grid.MoneyServer
 
             try
             {
-                // SQL-Abfrage zum Überprüfen, ob der Benutzer eine hinterlegte E-Mail-Adresse hat
+                // SQL-Abfrage zum ÃœberprÃ¼fen, ob der Benutzer eine hinterlegte E-Mail-Adresse hat
                 string sql = "SELECT email FROM `UserAccounts` WHERE PrincipalID = ?userID";
                 string email = null;
 
@@ -961,7 +808,7 @@ namespace OpenSim.Grid.MoneyServer
                     }
                 }
 
-                // Überprüfen, ob die E-Mail-Adresse leer ist oder null
+                // ÃœberprÃ¼fen, ob die E-Mail-Adresse leer ist oder null
                 if (string.IsNullOrEmpty(email))
                 {
                     m_log.InfoFormat("[USER MAIL LOCK]: User {0} does not have a registered email address", userID);
@@ -987,18 +834,18 @@ namespace OpenSim.Grid.MoneyServer
         {
             m_log.InfoFormat("[CHECK GROUP MONEY]: Checking group membership for agentId: {0}, groupId: {1}", agentId, groupId);
 
-            // Überprüfen, ob die groupId gesetzt ist
+            // ÃœberprÃ¼fen, ob die groupId gesetzt ist
             if (string.IsNullOrEmpty(groupId))
             {
                 m_log.Info("[CHECK GROUP MONEY]: groupId is empty, returning false");
-                return false; // Wenn die groupId nicht gesetzt ist, zurückgeben
+                return false; // Wenn die groupId nicht gesetzt ist, zurÃ¼ckgeben
             }
 
             MySQLSuperManager dbm = GetLockedConnection();
 
             try
             {
-                // SQL-Abfrage zum Überprüfen der Gruppenmitgliedschaft
+                // SQL-Abfrage zum ÃœberprÃ¼fen der Gruppenmitgliedschaft
                 string sql = "SELECT COUNT(*) FROM os_groups_membership WHERE PrincipalID = ?agentId AND GroupID = ?groupId";
                 using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
                 {
@@ -1058,7 +905,7 @@ namespace OpenSim.Grid.MoneyServer
         }
 
 
-        // Überprüfen, ob der Benutzer Mitglied der angegebenen Gruppe ist
+        // ÃœberprÃ¼fen, ob der Benutzer Mitglied der angegebenen Gruppe ist
         private bool IsUserInGroup(string agentId, string groupId)
         {
             // IClientAPI
@@ -1067,14 +914,14 @@ namespace OpenSim.Grid.MoneyServer
             if (string.IsNullOrEmpty(groupId))
             {
                 m_log.Debug("[IsUserInGroup]: groupId is empty, returning true");
-                return true; // Keine Einschränkung, wenn groupId nicht gesetzt ist
+                return true; // Keine EinschrÃ¤nkung, wenn groupId nicht gesetzt ist
             }
 
             MySQLSuperManager dbm = GetLockedConnection();
 
             try
             {
-                // SQL-Abfrage zum Überprüfen der Gruppenmitgliedschaft
+                // SQL-Abfrage zum ÃœberprÃ¼fen der Gruppenmitgliedschaft
                 string sql = "SELECT COUNT(*) FROM os_groups_membership WHERE PrincipalID = ?agentId AND GroupID = ?groupId";
                 using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
                 {
@@ -1104,11 +951,11 @@ namespace OpenSim.Grid.MoneyServer
 
             try
             {
-                // Ausnahmen für SYSTEM und BANKER
+                // Ausnahmen fÃ¼r SYSTEM und BANKER
                 if (userID == "SYSTEM" || userID == "BANKER" || userID == m_bankerAvatar)
                 {
                     m_log.InfoFormat("[CHECK MAXIMUM MONEY]: User {0} is SYSTEM or BANKER, skipping check.", userID);
-                    return 0; // Keine Begrenzung für diese Benutzer
+                    return 0; // Keine Begrenzung fÃ¼r diese Benutzer
                 }
 
                 // Abrufen des aktuellen Guthabens des Benutzers
@@ -1129,7 +976,7 @@ namespace OpenSim.Grid.MoneyServer
                     }
                 }
 
-                // Überprüfen, ob das Guthaben über dem Maximum liegt und ggf. abziehen
+                // ÃœberprÃ¼fen, ob das Guthaben Ã¼ber dem Maximum liegt und ggf. abziehen
                 if (currentBalance > m_CurrencyMaximum)
                 {
                     int excessAmount = currentBalance - m_CurrencyMaximum;
@@ -1144,11 +991,11 @@ namespace OpenSim.Grid.MoneyServer
                     }
 
                     m_log.InfoFormat("[CHECK MAXIMUM MONEY]: Reduced balance for user {0} by {1} to enforce maximum limit of {2}", userID, excessAmount, m_CurrencyMaximum);
-                    return excessAmount; // Rückgabe des abgezogenen Betrags
+                    return excessAmount; // RÃ¼ckgabe des abgezogenen Betrags
                 }
 
                 m_log.InfoFormat("[CHECK MAXIMUM MONEY]: No adjustment needed for user {0}", userID);
-                return 0; // Keine Änderung, falls das Guthaben innerhalb des Limits liegt
+                return 0; // Keine Ã„nderung, falls das Guthaben innerhalb des Limits liegt
             }
             catch (Exception ex)
             {
@@ -1183,14 +1030,14 @@ namespace OpenSim.Grid.MoneyServer
         {
             m_log.InfoFormat("[PERFORM GET CURRENCY QUOTE]: Generating currency quote for AgentId: {0}", agentId);
 
-            int rate = 100; // 1€ = 100L$
+            int rate = 100; // 1Â€ = 100L$
             return new Hashtable
             {
                 { "success", true },
                 { "currency", new Hashtable
                     {
-                        { "estimatedCost", currencyBuy / rate }, // Kosten in €
-                        { "currencyBuy", currencyBuy }          // Angeforderte Spielwährung
+                        { "estimatedCost", currencyBuy / rate }, // Kosten in Â€
+                        { "currencyBuy", currencyBuy }          // Angeforderte SpielwÃ¤hrung
                     }
                 },
                 { "confirm", Guid.NewGuid().ToString() }
@@ -1246,7 +1093,7 @@ namespace OpenSim.Grid.MoneyServer
             // Berechnung und Antwortvorbereitung
             Hashtable currencyResponse = new Hashtable
             {
-                { "estimatedCost", amount * 0.01 }, // Berechnung für Kosten
+                { "estimatedCost", amount * 0.01 }, // Berechnung fÃ¼r Kosten
                 { "currencyBuy", amount }
             };
 
@@ -1257,13 +1104,13 @@ namespace OpenSim.Grid.MoneyServer
                 { "confirm", Guid.NewGuid().ToString() }
             };
 
-            // Protokolliere die Antwort, bevor sie zurückgegeben wird
+            // Protokolliere die Antwort, bevor sie zurÃ¼ckgegeben wird
             m_log.InfoFormat("[GET CURRENCY QUOTE]: XML Response: {0}", ToXmlString(quoteResponse));
 
             // Erstelle die Antwort
             XmlRpcResponse returnval = new XmlRpcResponse { Value = quoteResponse };
 
-            // Füge ein weiteres Log hinzu, um sicherzustellen, dass die Antwort korrekt erstellt wurde
+            // FÃ¼ge ein weiteres Log hinzu, um sicherzustellen, dass die Antwort korrekt erstellt wurde
             m_log.InfoFormat("[GET CURRENCY QUOTE]: Returning response for getCurrencyQuote: {0}", ToXmlString((Hashtable)returnval.Value));
 
             return returnval;
@@ -1282,22 +1129,22 @@ namespace OpenSim.Grid.MoneyServer
 
             // Hier erfolgt der Transfer an den Money Banker (BankerAvatar als Sender)
             string senderID = m_bankerAvatar;  // Der Sender ist der BankerAvatar
-            string receiverID = agentId;       // Der Empfänger ist der Agent
-            UUID transactionUUID = UUID.Random(); // Eine eindeutige Transaktions-ID für die Transaktion
+            string receiverID = agentId;       // Der EmpfÃ¤nger ist der Agent
+            UUID transactionUUID = UUID.Random(); // Eine eindeutige Transaktions-ID fÃ¼r die Transaktion
 
             Hashtable responseData = new Hashtable();
             responseData["success"] = false;
 
-            // Versuche, die Transaktion auszuführen
+            // Versuche, die Transaktion auszufÃ¼hren
             try
             {
-                // Logge die Übertragung
+                // Logge die Ãœbertragung
                 m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Transferring money from {0} to {1}, Amount = {2}", senderID, receiverID, amount);
 
-                // Führe die tatsächliche Transaktion durch, indem die handlePayMoneyCharge-Methode aufgerufen wird
-                XmlRpcResponse transferResponse = handlePayMoneyCharge(request, remoteClient); // Übergibt die Anfrage an die tatsächliche Überweisungsmethode
+                // FÃ¼hre die tatsÃ¤chliche Transaktion durch, indem die handlePayMoneyCharge-Methode aufgerufen wird
+                XmlRpcResponse transferResponse = handlePayMoneyCharge(request, remoteClient); // Ãœbergibt die Anfrage an die tatsÃ¤chliche Ãœberweisungsmethode
 
-                // Überprüfe, ob die Antwort erfolgreich war
+                // ÃœberprÃ¼fe, ob die Antwort erfolgreich war
                 if (transferResponse != null && transferResponse.Value is Hashtable transferResult &&
                     transferResult.ContainsKey("success") && (bool)transferResult["success"])
                 {
@@ -1307,7 +1154,7 @@ namespace OpenSim.Grid.MoneyServer
                 }
                 else
                 {
-                    // Fehler bei der Überweisung
+                    // Fehler bei der Ãœberweisung
                     responseData["message"] = "Currency purchase failed during money transfer.";
                 }
             }
@@ -1378,7 +1225,7 @@ namespace OpenSim.Grid.MoneyServer
                     cmd.ExecuteNonQuery();
                 }
 
-                m_log.InfoFormat("[INITIALIZE USER CURRENCY]: User {0} initialized with {1}€ and {2}L$.", agentId, m_realMoney, m_gameMoney);
+                m_log.InfoFormat("[INITIALIZE USER CURRENCY]: User {0} initialized with {1}Â€ and {2}L$.", agentId, m_realMoney, m_gameMoney);
             }
             catch (Exception ex)
             {
@@ -1427,7 +1274,7 @@ namespace OpenSim.Grid.MoneyServer
         }
         public bool AddMoney(UUID transactionUUID)
         {
-            // Geld zu einer Transaktion hinzufügen
+            // Geld zu einer Transaktion hinzufÃ¼gen
             bool success = DoAddMoney(transactionUUID);
             if (!success)
             {
@@ -1505,10 +1352,10 @@ namespace OpenSim.Grid.MoneyServer
                 return false;
             }
 
-            // Regular Expression für gültige E-Mail-Adressen
+            // Regular Expression fÃ¼r gÃ¼ltige E-Mail-Adressen
             const string pattern = @"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$";
 
-            // Überprüfen, ob die E-Mail-Adresse das Muster erfüllt
+            // ÃœberprÃ¼fen, ob die E-Mail-Adresse das Muster erfÃ¼llt
             return Regex.IsMatch(email, pattern, RegexOptions.Compiled);
         }
 
@@ -1671,7 +1518,7 @@ namespace OpenSim.Grid.MoneyServer
         {
             try
             {
-                // Erstelle einen Dateipfad für das Log
+                // Erstelle einen Dateipfad fÃ¼r das Log
                 string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xmlrpc_debug.log");
 
                 // Lies den Request-Body
@@ -2568,23 +2415,23 @@ namespace OpenSim.Grid.MoneyServer
             m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Transfering money from {0} to {1}, Amount = {2}", senderID, receiverID, amount);
 
 
-            // Sitzungsprüfung für SYSTEM überspringen
+            // SitzungsprÃ¼fung fÃ¼r SYSTEM Ã¼berspringen
             if (senderID == m_bankerAvatar || senderID == "SYSTEM")
             {
-                m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Sender ist SYSTEM oder BankerAvatar. Sitzungsprüfung wird übersprungen.");
+                m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Sender ist SYSTEM oder BankerAvatar. SitzungsprÃ¼fung wird Ã¼bersprungen.");
             }
             else if (m_sessionDic.ContainsKey(senderID) && m_secureSessionDic.ContainsKey(senderID))
             {
                 if (m_sessionDic[senderID] != senderSessionID || m_secureSessionDic[senderID] != senderSecureSessionID)
                 {
-                    m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Sitzungsprüfung für Sender fehlgeschlagen " + senderID);
+                    m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: SitzungsprÃ¼fung fÃ¼r Sender fehlgeschlagen " + senderID);
                     responseData["message"] = "Session check failure, please re-login later!";
                     return response;
                 }
             }
             else
             {
-                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Sitzungsprüfung für Sender fehlgeschlagen " + senderID);
+                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: SitzungsprÃ¼fung fÃ¼r Sender fehlgeschlagen " + senderID);
                 responseData["message"] = "Session check failure, please re-login later!";
                 return response;
             }
@@ -2619,12 +2466,12 @@ namespace OpenSim.Grid.MoneyServer
                     {
                         if (amount > 0 || (m_enableAmountZero && amount == 0))
                         {
-                            // Manuelle Gutschrift wenn die automatische Gutschrift fehlschlägt
+                            // Manuelle Gutschrift wenn die automatische Gutschrift fehlschlÃ¤gt
                             if (!NotifyTransfer(transactionUUID, "Transfer failed, adding money manually.", "", ""))
                             {
-                                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Gutschrift fehlgeschlagen, versuche manuell Geld hinzuzufügen.");
+                                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Gutschrift fehlgeschlagen, versuche manuell Geld hinzuzufÃ¼gen.");
                                 
-                                // Ruft die Methode handleAddBankerMoney auf, um das Geld direkt hinzuzufügen.
+                                // Ruft die Methode handleAddBankerMoney auf, um das Geld direkt hinzuzufÃ¼gen.
                                 Hashtable addMoneyParams = new Hashtable();
                                 addMoneyParams["bankerID"] = "SYSTEM";  // Der "Banker"-ID
                                 addMoneyParams["amount"] = amount;
@@ -2645,14 +2492,14 @@ namespace OpenSim.Grid.MoneyServer
                         }
                         else if (amount == 0)
                         {
-                            responseData["success"] = true;     // Keine Nachrichten für L$0 Objekte
+                            responseData["success"] = true;     // Keine Nachrichten fÃ¼r L$0 Objekte
                         }
                         return response;
                     }
                 }
                 else
                 {
-                    m_log.ErrorFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Zahlungstransaktion für Benutzer {0} fehlgeschlagen.", senderID);
+                    m_log.ErrorFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Zahlungstransaktion fÃ¼r Benutzer {0} fehlgeschlagen.", senderID);
                 }
                 return response;
             }
@@ -3058,7 +2905,7 @@ namespace OpenSim.Grid.MoneyServer
         #region helper
 
 
-        //Spezifische Handler OnMoneyTransferedHandler: Protokolliert Details zu einer Geldüberweisung.
+        //Spezifische Handler OnMoneyTransferedHandler: Protokolliert Details zu einer GeldÃ¼berweisung.
         public XmlRpcResponse OnMoneyTransferedHandler(XmlRpcRequest request, IPEndPoint client)
         {
             if (request == null)
@@ -3514,7 +3361,7 @@ namespace OpenSim.Grid.MoneyServer
                 // Aktuelles Guthaben des Benutzers abrufen
                 int currentBalance = m_moneyDBService.getBalance(userID);
 
-                // Überprüfen, ob das Guthaben über dem Maximum liegt und ggf. abziehen
+                // ÃœberprÃ¼fen, ob das Guthaben Ã¼ber dem Maximum liegt und ggf. abziehen
                 if (currentBalance > m_CurrencyMaximum)
                 {
                     int excessAmount = currentBalance - m_CurrencyMaximum;
@@ -3777,7 +3624,7 @@ namespace OpenSim.Grid.MoneyServer
 
             string userID = string.Join(" ", cmdparams, 2, cmdparams.Length - 2).Trim();
 
-            // Prüfen, ob userID eine gültige UUID ist
+            // PrÃ¼fen, ob userID eine gÃ¼ltige UUID ist
             if (Guid.TryParse(userID, out Guid _))
             {
                 m_log.InfoFormat("[Cashbook]: userID is a valid UUID: {0}", userID);
@@ -3800,7 +3647,7 @@ namespace OpenSim.Grid.MoneyServer
 
             string userID = string.Join(" ", cmdparams, 2, cmdparams.Length - 2).Trim();
 
-            // Prüfen, ob userID eine gültige UUID ist
+            // PrÃ¼fen, ob userID eine gÃ¼ltige UUID ist
             if (Guid.TryParse(userID, out Guid _))
             {
                 m_log.InfoFormat("[Cashbook]: userID is a valid UUID: {0}", userID);
@@ -3823,7 +3670,7 @@ namespace OpenSim.Grid.MoneyServer
 
             string userID = string.Join(" ", cmdparams, 2, cmdparams.Length - 2).Trim();
 
-            // Prüfen, ob userID eine gültige UUID ist
+            // PrÃ¼fen, ob userID eine gÃ¼ltige UUID ist
             if (Guid.TryParse(userID, out Guid _))
             {
                 m_log.InfoFormat("[Cashbook]: userID is a valid UUID: {0}", userID);
