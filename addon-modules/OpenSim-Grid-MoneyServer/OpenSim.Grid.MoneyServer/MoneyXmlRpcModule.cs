@@ -829,45 +829,6 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        /*
-        private bool CheckGroupMoney(string agentId, string groupId)
-        {
-            m_log.InfoFormat("[CHECK GROUP MONEY]: Checking group membership for agentId: {0}, groupId: {1}", agentId, groupId);
-
-            // Überprüfen, ob die groupId gesetzt ist
-            if (string.IsNullOrEmpty(groupId))
-            {
-                m_log.Info("[CHECK GROUP MONEY]: groupId is empty, returning false");
-                return false; // Wenn die groupId nicht gesetzt ist, zurückgeben
-            }
-
-            MySQLSuperManager dbm = GetLockedConnection();
-
-            try
-            {
-                // SQL-Abfrage zum Überprüfen der Gruppenmitgliedschaft
-                string sql = "SELECT COUNT(*) FROM os_groups_membership WHERE PrincipalID = ?agentId AND GroupID = ?groupId";
-                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
-                {
-                    cmd.Parameters.AddWithValue("?agentId", agentId);
-                    cmd.Parameters.AddWithValue("?groupId", groupId);
-
-                    int count = Convert.ToInt32(cmd.ExecuteScalar());
-                    m_log.InfoFormat("[CHECK GROUP MONEY]: Query result: count={0}", count);
-                    return count > 0;
-                }
-            }
-            catch (Exception ex)
-            {
-                m_log.ErrorFormat("[CHECK GROUP MONEY]: Error checking group membership: {0}", ex.Message);
-                return false;
-            }
-            finally
-            {
-                dbm.Release();
-            }
-        }*/
-
         private bool CheckGroupMoney(string agentId, string groupId)
         {
             m_log.InfoFormat("[CHECK GROUP MONEY]: Checking group membership for agentId: {0}, groupId: {1}", agentId, groupId);
