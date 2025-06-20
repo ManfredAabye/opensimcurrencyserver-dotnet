@@ -2425,13 +2425,20 @@ namespace OpenSim.Grid.MoneyServer
                     UserInfo user = m_moneyDBService.FetchUserInfo(senderID);
                     if (user != null)
                     {
+                        // Wenn Betrag 0, dann keine weiteren Aktionen – einfach Erfolg zurückgeben
+                        if (amount == 0)
+                        {
+                            responseData["success"] = true;
+                            return response;
+                        }
+
+                        // Bei Betrag > 0 versuchen wir die Überweisung
                         if (amount > 0 || (m_enableAmountZero && amount == 0))
                         {
-                            // Manuelle Gutschrift wenn die automatische Gutschrift fehlschlägt
-                            if (!NotifyTransfer(transactionUUID, "Transfer failed, adding money manually.", "", ""))
+                            if (!NotifyTransfer(transactionUUID, "", "", ""))
                             {
                                 m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Gutschrift fehlgeschlagen, versuche manuell Geld hinzuzufügen.");
-                                
+
                                 // Ruft die Methode handleAddBankerMoney auf, um das Geld direkt hinzuzufügen.
                                 Hashtable addMoneyParams = new Hashtable();
                                 addMoneyParams["bankerID"] = "SYSTEM";  // Der "Banker"-ID
@@ -2441,35 +2448,36 @@ namespace OpenSim.Grid.MoneyServer
                                 addMoneyParams["transactionType"] = transactionType;
                                 addMoneyParams["description"] = "Manuelle Gutschrift nach Fehlermeldung";
 
-                                //XmlRpcResponse addMoneyResponse = handleAddBankerMoney(new XmlRpcRequest(addMoneyParams), remoteClient);
-                                XmlRpcResponse addMoneyResponse = handleAddBankerMoney(new XmlRpcRequest("AddBankerMoney", new object[] { addMoneyParams }), remoteClient);
+                                XmlRpcResponse addMoneyResponse = handleAddBankerMoney(
+                                    new XmlRpcRequest("AddBankerMoney", new object[] { addMoneyParams }),
+                                    remoteClient
+                                );
+
                                 Hashtable responseValue = addMoneyResponse.Value as Hashtable;
-                                responseData["success"] = addMoneyResponse != null
+                                bool addMoneySuccess = addMoneyResponse != null
                                     && responseValue != null
                                     && responseValue.ContainsKey("success")
                                     && (bool)responseValue["success"];
-                                //responseData["success"] = addMoneyResponse != null && addMoneyResponse.Value.ContainsKey("success") && (bool)addMoneyResponse.Value["success"];
+
+                                responseData["success"] = addMoneySuccess;
+
+                                if (!addMoneySuccess)
+                                    responseData["message"] = "Manuelles Hinzufügen des Geldes fehlgeschlagen.";
+
+                                return response;
                             }
+
+                            // Wenn NotifyTransfer erfolgreich war
+                            responseData["success"] = true;
+                            return response;
                         }
-                        else if (amount == 0)
-                        {
-                            responseData["success"] = true;     // Keine Nachrichten für L$0 Objekte
-                        }
-                        return response;
                     }
                 }
                 else
                 {
                     m_log.ErrorFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Zahlungstransaktion für Benutzer {0} fehlgeschlagen.", senderID);
                 }
-                return response;
-            }
-            catch (Exception e)
-            {
-                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Ausnahme bei der Zahlungstransaktion: " + e.ToString());
-            }
-            return response;
-        }
+
 
         public XmlRpcResponse handleCancelTransfer(XmlRpcRequest request, IPEndPoint remoteClient)
         {
