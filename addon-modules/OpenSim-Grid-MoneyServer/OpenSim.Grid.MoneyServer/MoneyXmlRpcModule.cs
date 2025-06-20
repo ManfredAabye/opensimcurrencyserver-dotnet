@@ -2328,8 +2328,6 @@ namespace OpenSim.Grid.MoneyServer
         public XmlRpcResponse handlePayMoneyCharge(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge now.");
-            // Debug: Log request parameters
-            //m_log.DebugFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Request Parameters: {0}", request.Params[0]);
 
             GetSSLCommonName(request);
 
@@ -2353,9 +2351,6 @@ namespace OpenSim.Grid.MoneyServer
             responseData["success"] = false;
             UUID transactionUUID = UUID.Random();
 
-            // Debug: Log initial variable values
-            //m_log.DebugFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Initial Variables - senderID: {0}, receiverID: {1}, amount: {2}", senderID, receiverID, amount);
-
             // Parameter aus der Anfrage extrahieren
             if (requestData.ContainsKey("senderID")) senderID = (string)requestData["senderID"];
             if (requestData.ContainsKey("senderSessionID")) senderSessionID = (string)requestData["senderSessionID"];
@@ -2365,18 +2360,13 @@ namespace OpenSim.Grid.MoneyServer
             if (requestData.ContainsKey("regionUUID")) regionUUID = (string)requestData["regionUUID"];
             if (requestData.ContainsKey("transactionType")) transactionType = Convert.ToInt32(requestData["transactionType"]);
             if (requestData.ContainsKey("description")) description = (string)requestData["description"];
-
             if (requestData.ContainsKey("receiverID")) receiverID = (string)requestData["receiverID"];
             if (requestData.ContainsKey("objectID")) objectID = (string)requestData["objectID"];
             if (requestData.ContainsKey("objectName")) objectName = (string)requestData["objectName"];
 
-            // Debug: Log updated variable values
-            //m_log.DebugFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Updated Variables - senderID: {0}, receiverID: {1}, amount: {2}", senderID, receiverID, amount);
-
             m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Transfering money from {0} to {1}, Amount = {2}", senderID, receiverID, amount);
 
-
-            // Sitzungsprüfung für SYSTEM überspringen
+            // Sitzungsprüfung überspringen für SYSTEM oder Banker
             if (senderID == m_bankerAvatar || senderID == "SYSTEM")
             {
                 m_log.InfoFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Sender ist SYSTEM oder BankerAvatar. Sitzungsprüfung wird übersprungen.");
@@ -2398,26 +2388,26 @@ namespace OpenSim.Grid.MoneyServer
             }
 
             int time = (int)((DateTime.UtcNow.Ticks - TicksToEpoch) / 10000000);
+
             try
             {
-                TransactionData transaction = new TransactionData();
-                transaction.TransUUID = transactionUUID;
-                transaction.Sender = senderID;
-                transaction.Receiver = receiverID;
-                transaction.Amount = amount;
-                transaction.ObjectUUID = objectID;
-                transaction.ObjectName = objectName;
-                transaction.RegionHandle = regionHandle;
-                transaction.RegionUUID = regionUUID;
-                transaction.Type = transactionType;
-                transaction.Time = time;
-                transaction.SecureCode = UUID.Random().ToString();
-                transaction.Status = (int)Status.PENDING_STATUS;
-                transaction.CommonName = GetSSLCommonName();
-                transaction.Description = description + " " + DateTime.UtcNow.ToString();
-
-                // Debug: Log transaction details
-                //m_log.DebugFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Transaction Details - TransUUID: {0}, Sender: {1}, Receiver: {2}, Amount: {3}", transaction.TransUUID, transaction.Sender, transaction.Receiver, transaction.Amount);
+                TransactionData transaction = new TransactionData
+                {
+                    TransUUID = transactionUUID,
+                    Sender = senderID,
+                    Receiver = receiverID,
+                    Amount = amount,
+                    ObjectUUID = objectID,
+                    ObjectName = objectName,
+                    RegionHandle = regionHandle,
+                    RegionUUID = regionUUID,
+                    Type = transactionType,
+                    Time = time,
+                    SecureCode = UUID.Random().ToString(),
+                    Status = (int)Status.PENDING_STATUS,
+                    CommonName = GetSSLCommonName(),
+                    Description = description + " " + DateTime.UtcNow.ToString()
+                };
 
                 bool result = m_moneyDBService.addTransaction(transaction);
                 if (result)
@@ -2425,23 +2415,21 @@ namespace OpenSim.Grid.MoneyServer
                     UserInfo user = m_moneyDBService.FetchUserInfo(senderID);
                     if (user != null)
                     {
-                        // Wenn Betrag 0, dann keine weiteren Aktionen – einfach Erfolg zurückgeben
                         if (amount == 0)
                         {
+                            // Für L$0 keine Transferaktion, einfach Erfolg zurückgeben
                             responseData["success"] = true;
                             return response;
                         }
 
-                        // Bei Betrag > 0 versuchen wir die Überweisung
                         if (amount > 0 || (m_enableAmountZero && amount == 0))
                         {
                             if (!NotifyTransfer(transactionUUID, "", "", ""))
                             {
                                 m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Gutschrift fehlgeschlagen, versuche manuell Geld hinzuzufügen.");
 
-                                // Ruft die Methode handleAddBankerMoney auf, um das Geld direkt hinzuzufügen.
                                 Hashtable addMoneyParams = new Hashtable();
-                                addMoneyParams["bankerID"] = "SYSTEM";  // Der "Banker"-ID
+                                addMoneyParams["bankerID"] = "SYSTEM";
                                 addMoneyParams["amount"] = amount;
                                 addMoneyParams["regionHandle"] = regionHandle;
                                 addMoneyParams["regionUUID"] = regionUUID;
@@ -2462,7 +2450,9 @@ namespace OpenSim.Grid.MoneyServer
                                 responseData["success"] = addMoneySuccess;
 
                                 if (!addMoneySuccess)
+                                {
                                     responseData["message"] = "Manuelles Hinzufügen des Geldes fehlgeschlagen.";
+                                }
 
                                 return response;
                             }
@@ -2477,7 +2467,14 @@ namespace OpenSim.Grid.MoneyServer
                 {
                     m_log.ErrorFormat("[MONEY XMLRPC]: handlePayMoneyCharge: Zahlungstransaktion für Benutzer {0} fehlgeschlagen.", senderID);
                 }
+            }
+            catch (Exception e)
+            {
+                m_log.Error("[MONEY XMLRPC]: handlePayMoneyCharge: Ausnahme bei der Zahlungstransaktion: " + e.ToString());
+            }
 
+            return response;
+        }
 
         public XmlRpcResponse handleCancelTransfer(XmlRpcRequest request, IPEndPoint remoteClient)
         {
