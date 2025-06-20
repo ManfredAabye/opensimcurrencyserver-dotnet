@@ -170,7 +170,6 @@ namespace OpenSim.Grid.MoneyServer
             {
                 return dbm.Manager.getBalance(userID);
             }
-
             catch (MySql.Data.MySqlClient.MySqlException e)
             {
                 e.ToString();
@@ -200,10 +199,10 @@ namespace OpenSim.Grid.MoneyServer
 
             try
             {
-                // Ausnahmen für SYSTEM und BANKER
+                // Ausnahmen fï¿½r SYSTEM und BANKER
                 if (userID == "SYSTEM" || userID == "BANKER")
                 {
-                    return 0; // Keine Begrenzung für diese Benutzer
+                    return 0; // Keine Begrenzung fï¿½r diese Benutzer
                 }
 
                 // Abrufen des aktuellen Guthabens des Benutzers
@@ -223,7 +222,7 @@ namespace OpenSim.Grid.MoneyServer
                     }
                 }
 
-                // Überprüfen, ob das Guthaben über dem Maximum liegt und ggf. abziehen
+                // ï¿½berprï¿½fen, ob das Guthaben ï¿½ber dem Maximum liegt und ggf. abziehen
                 if (currentBalance > m_CurrencyMaximum)
                 {
                     int excessAmount = currentBalance - m_CurrencyMaximum;
@@ -238,10 +237,10 @@ namespace OpenSim.Grid.MoneyServer
                     }
 
                     m_log.InfoFormat("[CheckMaximumMoney]: Reduced balance for user {0} by {1} to enforce maximum limit of {2}", userID, excessAmount, m_CurrencyMaximum);
-                    return excessAmount; // Rückgabe des abgezogenen Betrags
+                    return excessAmount; // Rï¿½ckgabe des abgezogenen Betrags
                 }
 
-                return 0; // Keine Änderung, falls das Guthaben innerhalb des Limits liegt
+                return 0; // Keine ï¿½nderung, falls das Guthaben innerhalb des Limits liegt
             }
             catch (Exception ex)
             {
@@ -408,7 +407,6 @@ namespace OpenSim.Grid.MoneyServer
         {
             MySQLSuperManager dbm = GetLockedConnection();
 
-
             TransactionData transaction = new TransactionData();
             transaction.TransUUID = UUID.Random();
             transaction.Sender = UUID.Zero.ToString();  // System sender
@@ -417,7 +415,7 @@ namespace OpenSim.Grid.MoneyServer
             transaction.ObjectUUID = UUID.Zero.ToString();
             transaction.ObjectName = string.Empty;
             transaction.RegionHandle = string.Empty;
-            transaction.Type = (int)TransactionType.BuyMoney; // Angenommen, BuyMoney ist ein gültiger Transaktionstyp ???
+            transaction.Type = (int)TransactionType.BuyMoney; // Angenommen, BuyMoney ist ein gï¿½ltiger Transaktionstyp ???
             transaction.Time = (int)((DateTime.UtcNow.Ticks - TicksToEpoch) / 10000000);
             transaction.Status = (int)Status.PENDING_STATUS;
             transaction.SecureCode = UUID.Random().ToString();
@@ -425,12 +423,15 @@ namespace OpenSim.Grid.MoneyServer
             transaction.Description = "BuyCurrency " + DateTime.UtcNow.ToString();
 
             bool ret = addTransaction(transaction);
-            if (!ret) return false;
-                       
+            if (!ret)
+            {
+                dbm.Release();
+                return false;
+            }
 
             try
             {
-                // Füge Geld dem Benutzerkonto hinzu
+                // Fï¿½ge Geld dem Benutzerkonto hinzu
                 ret = giveMoney(transaction.TransUUID, userID, amount);
             }
             catch (MySql.Data.MySqlClient.MySqlException e)
@@ -539,7 +540,11 @@ namespace OpenSim.Grid.MoneyServer
             transaction.Description = "addUser " + DateTime.UtcNow.ToString();
 
             bool ret = addTransaction(transaction);
-            if (!ret) return false;
+            if (!ret)
+            {
+                dbm.Release();
+                return false;
+            }
 
             try
             {
@@ -745,7 +750,8 @@ namespace OpenSim.Grid.MoneyServer
                         //If receiver not found, add it to DB.
                         if (getBalance(transaction.Receiver) == -1)
                         {
-                            m_log.ErrorFormat("[MONEY DB]: DoTransfer: Receiver not found in balances DB. {0}", transaction.Receiver);
+                            m_log.ErrorFormat("[MONEY DB]: DoTransfer: Receiver not found in balances table. {0}", transaction.Receiver);
+                            dbm.Release();
                             return false;
                         }
 
@@ -791,6 +797,8 @@ namespace OpenSim.Grid.MoneyServer
                 setTotalSale(transaction);
             }
 
+            dbm.Release();
+
             return do_trans;
         }
 
@@ -809,13 +817,15 @@ namespace OpenSim.Grid.MoneyServer
                 //If receiver not found, add it to DB.
                 if (getBalance(transaction.Receiver) == -1)
                 {
-                    m_log.ErrorFormat("[MONEY DB]: DoAddMoney: Receiver not found in balances DB. {0}", transaction.Receiver);
+                    m_log.ErrorFormat("[MONEY DB]: DoAddMoney: Receiver not found in balances table. {0}", transaction.Receiver);
+                    dbm.Release();
                     return false;
                 }
                 //
                 if (giveMoney(transactionUUID, transaction.Receiver, transaction.Amount))
                 {
                     setTotalSale(transaction);
+                    dbm.Release();
                     return true;
                 }
                 else
@@ -828,6 +838,8 @@ namespace OpenSim.Grid.MoneyServer
             {	// Can not fetch the transaction or it has expired
                 m_log.ErrorFormat("[MONEY DB]: The transaction:{0} has expired", transactionUUID.ToString());
             }
+
+            dbm.Release();
 
             return false;
         }
@@ -1049,7 +1061,7 @@ namespace OpenSim.Grid.MoneyServer
         {
             m_log.InfoFormat("[MONEY TRANSFER]: Transferring {0} from {1} to {2}.", amount, senderID, receiverID);
 
-            // Beispielhafte Implementierung: Führe den Geldtransfer durch
+            // Beispielhafte Implementierung: Fï¿½hre den Geldtransfer durch
             try
             {
                 MySQLSuperManager dbm = GetLockedConnection();
@@ -1071,6 +1083,8 @@ namespace OpenSim.Grid.MoneyServer
                         LogTransaction(UUID.Random(), receiverID, amount);
                     }
 
+                    dbm.Release();
+
                     return result;
                 }
             }
@@ -1091,7 +1105,6 @@ namespace OpenSim.Grid.MoneyServer
             {
                 MySQLSuperManager dbm = GetLockedConnection();
                 string sql = "INSERT INTO balances (user, balance) VALUES (?agentId, ?realMoney), (?agentId, ?gameMoney)";
-
                 using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
                 {
                     cmd.Parameters.AddWithValue("?agentId", agentId);
@@ -1100,13 +1113,14 @@ namespace OpenSim.Grid.MoneyServer
 
                     cmd.ExecuteNonQuery();
                 }
-
-                m_log.InfoFormat("[INITIALIZE USER CURRENCY]: User {0} initialized with {1}€ and {2}L$.", agentId, realMoney, gameMoney);
+                m_log.InfoFormat("[INITIALIZE USER CURRENCY]: User {0} initialized with {1}ï¿½ and {2}L$.", agentId, realMoney, gameMoney);
+                dbm.Release();
             }
             catch (Exception ex)
             {
                 m_log.ErrorFormat("[INITIALIZE USER CURRENCY]: Error initializing user currency: {0}", ex.Message);
             }
+
         }
 
         public Hashtable ApplyFallbackCredit(string agentId)
@@ -1118,13 +1132,13 @@ namespace OpenSim.Grid.MoneyServer
             {
                 MySQLSuperManager dbm = GetLockedConnection();
                 string sql = "UPDATE balances SET balance = balance + 100 WHERE user = ?agentId";
-
                 using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
                 {
                     cmd.Parameters.AddWithValue("?agentId", agentId);
 
                     cmd.ExecuteNonQuery();
                 }
+                dbm.Release();
             }
             catch (Exception ex)
             {
@@ -1137,6 +1151,7 @@ namespace OpenSim.Grid.MoneyServer
                 { "creditedAmount", 100 },
                 { "message", "Fallback credit applied due to transaction failure." }
             };
+
         }
 
     }
