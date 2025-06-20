@@ -144,6 +144,6 @@ namespace OpenSim.Grid.MoneyServer
     /// <param name="startTime">Die Startzeit.</param>
     /// <param name="endTime">Die Endzeit.</param>
         IEnumerable<TransactionData> GetTransactionHistory(string userID, int startTime, int endTime);
-        MySQLSuperManager GetLockedConnection();
+        MySQLSuperManager GetLockedConnection(int timeoutMs);
     }
 }

@@ -41,6 +41,13 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
         private string connectString;
         public MySqlConnection dbcon;
 
+        public bool IsConnected { get; set; }
+        public object Connection { get; internal set; }
+        //public MySqlConnection Connection { get; private set; }
+        public object GetConnection()
+        {
+            return this.Connection;
+        }
 
         public MySQLMoneyManager(string hostname, string database, string username, string password, string cpooling, string port)
         {

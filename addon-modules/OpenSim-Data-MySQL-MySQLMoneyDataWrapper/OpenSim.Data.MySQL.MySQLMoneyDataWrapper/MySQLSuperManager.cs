@@ -15,48 +15,141 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using MySql.Data.MySqlClient;
+
 using System;
+using System.Data;
 using System.Threading;
 
 namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
 {
-    public class MySQLSuperManager
+    public class MySQLSuperManager : IDisposable
     {
-        public bool Locked;
-        private readonly Mutex m_lock = new Mutex(false);
-        public MySQLMoneyManager Manager;
-        public string Running;
+        private readonly Mutex _mutex = new Mutex(false);
+        private readonly MySQLMoneyManager _manager;
+        private MySqlConnection _connection;
+        private bool _disposed = false;
+        private bool _locked = false;
 
         public MySQLSuperManager(string connectionString)
         {
-            Manager = new MySQLMoneyManager(connectionString);
+            _manager = new MySQLMoneyManager(connectionString);
+            _connection = _manager.Connection as MySqlConnection;
         }
 
-        /// <summary>Gets the lock.</summary>
+        public bool IsConnected
+        {
+            get
+            {
+                if (_disposed) throw new ObjectDisposedException(nameof(MySQLSuperManager));
+                if (_connection == null) return false;
+
+                return _connection.State == ConnectionState.Open;
+            }
+        }
+
+        public bool Locked => _locked;
+
+        public MySQLMoneyManager Manager => _manager;
+
         public void GetLock()
         {
-            Locked = true;
-            m_lock.WaitOne();
+            if (_disposed) throw new ObjectDisposedException(nameof(MySQLSuperManager));
+
+            _mutex.WaitOne();
+            _locked = true;
+
+            if (_connection != null && _connection.State != ConnectionState.Open)
+            {
+                _connection.Open();
+            }
+        }
+
+        public bool TryGetLock(int timeoutMs = 5000)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(MySQLSuperManager));
+            if (_connection == null) return false;
+
+            try
+            {
+                if (_mutex.WaitOne(timeoutMs))
+                {
+                    _locked = true;
+                    if (_connection.State != ConnectionState.Open)
+                    {
+                        _connection.Open();
+                    }
+                    return true;
+                }
+                return false;
+            }
+            catch (AbandonedMutexException)
+            {
+                _locked = true;
+                return true;
+            }
         }
 
         public void Release()
         {
+            ReleaseLock(); // Alias für ReleaseLock() zur Abwärtskompatibilität
+        }
+
+        public void ReleaseLock()
+        {
+            if (_disposed || !_locked) return;
+
             try
             {
-                m_lock.ReleaseMutex();
+                if (_connection != null && _connection.State == ConnectionState.Open)
+                {
+                    _connection.Close();
+                }
+                _mutex.ReleaseMutex();
+                _locked = false;
             }
             catch (Exception ex)
             {
-                // Log the exception
-                Console.WriteLine($"An exception occurred while releasing the mutex: {ex.Message}");
+                Console.WriteLine($"[MySQLSuperManager] Fehler beim Freigeben: {ex.Message}");
                 throw;
             }
-            finally
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed) return;
+
+            if (disposing)
             {
-                Locked = false;
+                try
+                {
+                    if (_locked)
+                    {
+                        try { _mutex.ReleaseMutex(); } catch { }
+                        _locked = false;
+                    }
+                    _mutex?.Dispose();
+
+                    _connection?.Close();
+                    _connection?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MySQLSuperManager] Fehler beim Aufräumen: {ex.Message}");
+                }
             }
+            _disposed = true;
+        }
+
+        ~MySQLSuperManager()
+        {
+            Dispose(false);
         }
     }
-
-
 }

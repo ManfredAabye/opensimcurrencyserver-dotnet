@@ -16,18 +16,23 @@
  */
 
 using log4net;
+
 using MySql.Data.MySqlClient;
 
 using Mysqlx.Crud;
 using Mysqlx.Notice;
+
 using OpenMetaverse;
+
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using OpenSim.Modules.Currency;
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
+using System.Threading;
 
 namespace OpenSim.Grid.MoneyServer
 {
@@ -86,56 +91,104 @@ namespace OpenSim.Grid.MoneyServer
                 }
             }
         }
-        public MySQLSuperManager GetLockedConnection()
+
+        public MySQLSuperManager GetLockedConnection(int timeoutMs = 5000)
         {
-            lock (connectionLock)
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            int lastWarnedSeconds = -1;
+
+            while (stopwatch.ElapsedMilliseconds < timeoutMs)
             {
-                //m_log.InfoFormat("[GetLockedConnection]: m_maxConnections is {0}", m_maxConnections);
-                if (m_maxConnections == 0)
+                lock (connectionLock)
                 {
-                    throw new InvalidOperationException("m_maxConnections cannot be zero.");
+                    for (int i = 0; i < m_maxConnections; i++)
+                    {
+                        int index = (m_lastConnect + i) % m_maxConnections;
+
+                        if (m_dbconnections.TryGetValue(index, out var msm))
+                        {
+                            if (!msm.Locked)
+                            {
+                                try
+                                {
+                                    msm.GetLock();
+
+                                    // Minimalistische Verbindungsprüfung ohne zusätzliche Abhängigkeiten
+                                    try
+                                    {
+                                        // Einfacher Testbefehl ohne ExecuteScalar
+                                        using (var cmd = new MySqlCommand("SELECT 1", (MySqlConnection)msm.Manager.Connection))
+                                        {
+                                            cmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                    catch
+                                    {
+                                        m_log.WarnFormat("[GetLockedConnection]: Verbindung {0} nicht lebendig", index);
+                                        try
+                                        {
+                                            ((MySqlConnection)msm.Manager.Connection).Close();
+                                            ((MySqlConnection)msm.Manager.Connection).Open();
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            m_log.ErrorFormat("[GetLockedConnection]: Reconnect fehlgeschlagen: {0}", ex.Message);
+                                            msm.ReleaseLock();
+                                            continue;
+                                        }
+                                    }
+
+                                    m_lastConnect = index;
+                                    return msm;
+                                }
+                                catch (Exception ex)
+                                {
+                                    m_log.ErrorFormat("[GetLockedConnection]: Fehler: {0}", ex.Message);
+                                    if (msm.Locked)
+                                    {
+                                        try { msm.ReleaseLock(); } catch { }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
-                int lockedCons = 0;
-                while (true)
+                // Einfache Wartezeit-Logik
+                int currentSeconds = (int)(stopwatch.ElapsedMilliseconds / 1000);
+                if (currentSeconds > lastWarnedSeconds)
                 {
-                    m_lastConnect++;
-                    //m_log.DebugFormat("GetLockedConnection: m_lastConnect incremented to {0}", m_lastConnect);
-
-                    if (m_lastConnect == int.MaxValue)
-                    {
-                        m_lastConnect = 0;
-                        //m_log.Debug("GetLockedConnection: m_lastConnect overflow, resetting to 0");
-                    }
-
-                    int index = m_lastConnect % m_maxConnections;
-                    if (!m_dbconnections.ContainsKey(index))
-                    {
-                        m_log.ErrorFormat("GetLockedConnection: Invalid connection index {0}", index);
-                        throw new KeyNotFoundException($"The given key '{index}' was not present in the dictionary");
-                    }
-
-                    MySQLSuperManager msm = m_dbconnections[index];
-                    //m_log.DebugFormat("GetLockedConnection: Checking connection {0} for lock", msm);
-                    if (!msm.Locked)
-                    {
-                        msm.GetLock();
-                        //m_log.DebugFormat("GetLockedConnection: Connection {0} locked successfully", msm);
-                        return msm;
-                    }
-
-                    lockedCons++;
-                    //m_log.DebugFormat("GetLockedConnection: Connection {0} is locked, trying next one. lockedCons: {1}", msm, lockedCons);
-
-                    if (lockedCons > m_maxConnections)
-                    {
-                        lockedCons = 0;
-                        System.Threading.Thread.Sleep(2000);
-                        m_log.Warn("GetLockedConnection: All connections are in use. Probable cause: Something didn't release a mutex properly, or high volume of requests inbound.");
-                    }
+                    m_log.WarnFormat("[GetLockedConnection]: Warte seit {0}s...", currentSeconds);
+                    lastWarnedSeconds = currentSeconds;
                 }
+
+                Thread.Sleep(100);
             }
+
+            m_log.Error("[GetLockedConnection]: Timeout - Alle Verbindungen belegt");
+            throw new TimeoutException($"Timeout nach {timeoutMs}ms");
         }
+
+        // Hilfsmethoden
+        //private bool TestConnectionAlive(MySQLSuperManager msm)
+        //{
+        //    try
+        //    {
+        //        // Einfache Ping-Abfrage oder SELECT 1
+        //        return msm.Manager.ExecuteScalar("SELECT 1") != null;
+        //    }
+        //    catch
+        //    {
+        //        return false;
+        //    }
+        //}
+
+        //private int CalculateBackoffDelay(int retryCount)
+        //{
+        //    // Exponentielles Backoff mit Maximalwert (100ms, 200ms, 400ms, ... bis max 2000ms)
+        //    return Math.Min(100 * (int)Math.Pow(2, Math.Min(retryCount, 4)), 2000);
+        //}
+
 
         public void Reconnect()
         {
@@ -161,7 +214,7 @@ namespace OpenSim.Grid.MoneyServer
             }
             //m_log.Debug("Reconnect attempt completed.");
         }
-         
+
         public int getBalance(string userID)
         {
             MySQLSuperManager dbm = GetLockedConnection();
@@ -187,7 +240,7 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
-               
+
         public int CheckMaximumMoney(string userID, int m_CurrencyMaximum)
         {
             MySQLSuperManager dbm = GetLockedConnection();
@@ -426,7 +479,7 @@ namespace OpenSim.Grid.MoneyServer
 
             bool ret = addTransaction(transaction);
             if (!ret) return false;
-                       
+
 
             try
             {
@@ -463,7 +516,7 @@ namespace OpenSim.Grid.MoneyServer
             MySQLSuperManager dbm = GetLockedConnection();
 
             if (transaction.Receiver == transaction.Sender) return false;
-            if (transaction.Sender == UUID.Zero.ToString()) return false;            
+            if (transaction.Sender == UUID.Zero.ToString()) return false;
 
             int time = (int)((DateTime.UtcNow.Ticks - TicksToEpoch) / 10000000);
             try
