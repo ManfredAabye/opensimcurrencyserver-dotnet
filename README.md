@@ -1,4 +1,4 @@
-# OpenSimCurrencyServer DOTNET 2024
+# OpenSimCurrencyServer DOTNET 2025
 
 <img src="https://ci.appveyor.com/api/projects/status/32r7s2skrgm9ubva?svg=true" alt="Project Badge" width="150">
 
@@ -7,6 +7,9 @@
 <img src="https://i.pinimg.com/originals/34/2e/6d/342e6d8b1ef0a4ff9ae8853284047266.jpg" alt="Project Badge" width="250">
 
 .
+
+### Alle Bestandteile wurden auf Stabilität getestet, soweit es mit meinem Server möglich war. Zusätzlich wurden deutsche Informationen eingefügt, die den jeweiligen Code analysieren.
+### All components have been tested for stability as far as possible with my server. In addition, German information has been added that analyzes the corresponding code.
 
 ### Buying land without landtool.php is now possible.
 
