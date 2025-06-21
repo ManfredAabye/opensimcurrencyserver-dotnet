@@ -13,6 +13,19 @@
  * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Funktion
+
+IMoneyDBService ist ein Interface für Datenbankoperationen rund um ein Währungssystem, typischerweise für virtuelle Ökonomien. Es definiert Methoden für:
+
+    Nutzerverwaltung (z.B. addUser, DeleteUser, UserExists, UpdateUserInfo)
+    Kontostand- und Geldtransaktionen (getBalance, withdrawMoney, giveMoney, BuyMoney, BuyCurrency, PerformMoneyTransfer)
+    Transaktionsmanagement (addTransaction, updateTransactionStatus, FetchTransaction, GetTransactionHistory, SetTransExpired)
+    Fehlerprotokollierung (LogTransactionError)
+    Authentifizierungen und Validierungen (ValidateTransfer)
+    Verbindungsmanagement (GetLockedConnection)
+
+Die Methoden sind so gestaltet, dass sie in einer konkreten Implementierung mit einer Datenbank (z.B. MySQL) interagieren.
  */
 
 
@@ -20,6 +33,7 @@ using OpenMetaverse;
 
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -139,10 +153,10 @@ namespace OpenSim.Grid.MoneyServer
         /// <param name="errorMessage">Die Fehlermeldung oder Änderungshinweis.</param>
         void LogTransactionError(UUID transactionID, string errorMessage);
 
-    /// <summary>Ruft eine Liste der Transaktionen für einen Benutzer innerhalb eines bestimmten Zeitrahmens ab.</summary>
-    /// <param name="userID">Die Benutzer-ID.</param>
-    /// <param name="startTime">Die Startzeit.</param>
-    /// <param name="endTime">Die Endzeit.</param>
+        /// <summary>Ruft eine Liste der Transaktionen für einen Benutzer innerhalb eines bestimmten Zeitrahmens ab.</summary>
+        /// <param name="userID">Die Benutzer-ID.</param>
+        /// <param name="startTime">Die Startzeit.</param>
+        /// <param name="endTime">Die Endzeit.</param>
         IEnumerable<TransactionData> GetTransactionHistory(string userID, int startTime, int endTime);
         MySQLSuperManager GetLockedConnection();
     }

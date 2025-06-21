@@ -13,6 +13,39 @@
  * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Funktion
+    TransactionData ist eine reine Datenklasse (POCO/DTO), die alle relevanten Felder für eine Finanztransaktion im OpenSim-Money-Modul kapselt.
+        Felder: UUIDs, Beträge, Balances, Typen, Zeiten, Status, Objekt- und Regionsdaten, Sicherheitscode, Beschreibung usw.
+        Für alle Felder gibt es Properties mit Getter/Setter.
+    Zwei Enums:
+        Status (SUCCESS, PENDING, FAILED, ERROR)
+        AvatarType (diverse Avatar-Typen, z.B. LOCAL, HG, GUEST, NPC)
+    UserInfo ist ebenfalls eine reine Datenklasse für Benutzerinformationen, mit Properties für UserID, SimIP, Name, Passwort-Hash, Typ, Klasse, ServerURL.
+
+Null Pointer & Fehlerquellen
+Null Pointer
+    Felder vom Typ string werden grundsätzlich mit string.Empty initialisiert (niemals null im Standardzustand).
+    UUIDs werden (soweit gesetzt) aus dem Typ OpenMetaverse.UUID initialisiert – dieser Typ ist ein struct und kann daher nie null sein.
+    Es gibt keine Methoden mit Logik, daher auch keine Parameterprüfungen oder komplexe Objekt-Manipulationen, bei denen NullPointer auftreten könnten.
+    Setter/Getter der Properties geben direkt das Feld zurück oder setzen es, ohne Logik.
+    Die Enums können nicht null sein.
+
+Fehlerquellen
+    Keine Methoden mit Logik, also keine klassische Fehlerquelle wie Division durch 0, Indexfehler o.ä.
+    Setter führen keine Validierung durch (z.B. auf gültige UUIDs, Wertebereiche), 
+    was bei fehlerhafter Nutzung zu inkonsistenten Daten führen könnte – das ist aber kein NullPointer und im Kontext von Datenklassen üblich.
+    UserInfo: Alle Felder sind mit sinnvollen Defaultwerten versehen (string.Empty oder ein Enum-Wert).
+
+Zusammenfassung
+    Null Pointer: Es gibt im aktuellen Code keine Gefahr für NullPointer-Exceptions, da alle Felder mit Defaultwerten belegt sind und keine Logik existiert.
+    Fehlerquellen: Keine Methoden, keine Validierung – klassisch für Datenklassen. 
+    Fehler können nur entstehen, wenn von außen ungültige Werte gesetzt werden, aber das verursacht keine NullPointer-Fehler.
+    Funktion: Kapselt Daten für Transaktionen und Benutzer im OpenSim-Money-System.
+
+Fazit:
+Die Datei ist eine reine Datenstruktur und sicher gegenüber NullPointer-Fehlern. Es gibt keine gefährlichen Stellen im Code. 
+Die Nutzung ist robust, solange von außen sinnvolle Werte gesetzt werden.
  */
 
 using OpenMetaverse;

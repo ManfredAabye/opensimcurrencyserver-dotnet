@@ -13,6 +13,33 @@
  * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Funktion
+Das Interface IMoneyServiceCore definiert grundlegende Service-Methoden für den Kern des MoneyServers. Es stellt folgende Funktionalitäten bereit:
+
+    Zugriff auf den HTTP-Server (GetHttpServer)
+    Zugriff auf verschiedene Session-Dictionaries (GetSessionDic, GetSecureSessionDic, GetWebSessionDic)
+    Zugriff auf Konfigurationen (GetServerConfig, GetCertConfig)
+    Prüfen, ob ein Client-Zertifikat geprüft wird (IsCheckClientCert)
+
+Null-Pointer & Fehlerquellen
+    Da es sich um ein Interface handelt, gibt es keine Implementierung und somit auch keine direkte Gefahr für NullPointerExceptions im Interface selbst.
+    Die Gefahr von NullPointerExceptions entsteht erst in der konkreten Implementierung, wenn z.B. eine der Get*-Methoden null zurückliefert und der Aufrufer das Ergebnis nicht prüft.
+
+Typische Fehlerquellen in der Implementierung:
+    Rückgabe von null bei Methoden, die Dictionaries oder Konfigurationen liefern sollen.
+    Nicht initialisierte Objekte in der Implementierung dieser Methoden.
+    Der HTTP-Server oder die Konfigurationen könnten in Implementierungen nicht korrekt gesetzt sein.
+
+Empfehlungen für Implementierungen
+    Immer sicherstellen, dass Methoden niemals null zurückliefern, außer das Verhalten ist explizit dokumentiert und der Aufrufer prüft dies.
+    Bei Fehlern oder fehlenden Objekten lieber leere Dictionaries oder Default-Konfigurationen zurückgeben.
+    Gute Dokumentation, wann Methoden null liefern könnten.
+
+Zusammenfassung
+    Funktion: Interface zur Bereitstellung zentraler Kernfunktionen für den MoneyServer.
+    Null-Pointer: Keine Gefahr im Interface selbst, aber möglicherweise in der Implementierung, wenn Rückgabewerte null sind.
+    Empfehlung: In der Implementierung auf robuste Rückgaben achten und keine null-Referenzen zurückgeben.
  */
 
 using Nini.Config;

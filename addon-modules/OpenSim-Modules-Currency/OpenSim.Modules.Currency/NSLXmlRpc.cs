@@ -1,6 +1,58 @@
-/* 
+﻿/* 
  * Copyright (c) Contributors, http://www.nsl.tuis.ac.jp
  *
+
+Funktion
+Die Klasse NSLXmlRpcRequest erweitert XmlRpcRequest und implementiert eine Möglichkeit, XML-RPC-Requests (z.B. für einen MoneyServer) mit optionaler Client-Zertifikatsunterstützung und Serverzertifikatsprüfung zu senden. Sie serialisiert den Request, sendet ihn per HTTP(S) und deserialisiert die Antwort.
+Null Pointer Checks
+
+1. Konstruktoren:
+    Initialisieren immer das Parameter-Array (_params).
+    Keine Gefahr für NullPointer in der Instanz selbst.
+
+2. certSend-Methode:
+    Prüft, ob das erzeugte HttpWebRequest-Objekt null ist.
+    Holt das Zertifikat via certVerify.GetPrivateCert(). Wenn dieses null ist, wird kein Zertifikat angehängt (kein Fehler).
+    Prüft, ob ein Zertifikats-Validator gesetzt werden muss.
+    Holt den Stream für den Request im Try/Catch. Bei Fehler wird geloggt und null zurückgegeben.
+    Holt die Response im Try/Catch. Fehler werden geloggt, aber das Programm läuft weiter.
+    Rückgabe von null, wenn der Stream nicht geöffnet werden kann.
+    Liest den Response-Stream, ohne expliziten Null-Check auf response. Wenn GetResponse() fehlschlägt, bleibt das Response-Objekt null, was zu einem Fehler führen kann, falls nicht abgefangen.
+
+Potenzielle Null Pointer:
+    Nach einem Fehler bei GetResponse() bleibt response null, aber danach wird direkt response.GetResponseStream() aufgerufen.
+    → Es fehlt ein expliziter Null-Check für response nach der Fehlerbehandlung! Das ist eine Schwachstelle:
+    C#
+
+    HttpWebResponse response = null;
+    try { response = (HttpWebResponse)request.GetResponse(); }
+    catch (Exception ex) { ... }
+    // Kein Check auf response == null vor response.GetResponseStream()
+
+Fehlerquellen und Fehlerbehandlung
+    Netzwerkfehler: Werden beim Öffnen von Streams und Response sauber per Try/Catch behandelt und geloggt.
+    Serialisierung: Falls der Request-Stream nicht geöffnet werden kann, wird null zurückgegeben.
+    Fehlerhafte Zertifikate: Wenn kein Zertifikatsprüfer übergeben wird, wird die Serverzertifikatsprüfung ausgeschaltet (per Header).
+    Fehler beim Deserialisieren: Keine explizite Fehlerbehandlung beim Deserialisieren des Response-Streams, aber vorherige Fehler führen dazu, dass diese Zeile nicht ausgeführt wird.
+
+Zusammenfassung
+    Null Pointer:
+        Fast überall sicher behandelt, aber ein (kleiner) Fehler: Nach einem Fehler bei GetResponse() kann response null sein, was zu einem NullReferenceException bei response.GetResponseStream() führen kann.
+        → Empfohlen: Vor dem Streamzugriff explizit prüfen, ob response != null.
+    Fehlerquellen:
+        Netzwerk- und Zertifikatsfehler werden gut geloggt und führen zu Rückgabe von null.
+    Funktion:
+        Sichert und erweitert XML-RPC-Requests um Zertifikats- und Sicherheitsoptionen.
+
+Fazit:
+Die Klasse ist robust, bis auf den fehlenden Null-Check für response nach GetResponse(). Ansonsten werden Null Pointer und Fehlerquellen sorgfältig behandelt. Logging ist umfassend.
+
+Empfehlung:
+Füge vor dem Zugriff auf den Response-Stream einen Check ein:
+C#
+
+if (response == null) return null;
+
  */
 
 
@@ -142,6 +194,10 @@ namespace NSL.Network.XmlRpc
                 // Log any errors getting the response
                 m_log.ErrorFormat("[MONEY NSL XMLRPC]: XmlRpcResponse certSend: GetResponse Error: {0}", ex.ToString());
             }
+
+            // Return null if the response could not be obtained
+            if (response == null)
+                return null;
 
             // Deserialize the response from the server
             StreamReader input = new StreamReader(response.GetResponseStream());

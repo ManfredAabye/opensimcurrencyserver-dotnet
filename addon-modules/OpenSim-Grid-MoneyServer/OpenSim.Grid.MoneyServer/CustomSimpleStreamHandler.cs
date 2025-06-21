@@ -1,4 +1,23 @@
-﻿using System;
+﻿/*
+Funktion des Codes
+
+    Die Klasse CustomSimpleStreamHandler erweitert SimpleBaseRequestHandler und implementiert ISimpleStreamHandler.
+    Sie dient als generischer HTTP-Handler, der verschiedene Arten von Authentifizierung und Verarbeitungslogik unterstützt.
+    Konstruktoren erlauben flexible Kombinationen aus Pfad, Name, Auth-Objekt, Prozess-Methoden und Callbacks.
+    Die zentrale Methode ist Handle, die einen HTTP-Request verarbeitet: Authentifizierung, dann die eigentliche Verarbeitung durch Callback, Delegate oder Fallback-Logik.
+
+Verbesserungsvorschläge
+
+    Logging im Catch-Block für bessere Fehlerdiagnose.
+    Optional: Warnung oder Exception, wenn weder m_processAction, m_processRequest gesetzt ist noch ProcessRequest überschrieben wurde.
+    Optional: Dokumentation, dass für sinnvolle Funktionalität eine dieser Methoden/Callbacks gesetzt sein muss.
+
+Fazit:
+Die Klasse ist robust gegen NullPointer-Exceptions, weil überall sauber geprüft wird. Die Fehlerbehandlung ist sehr generisch – für Produktionseinsatz wäre Logging sinnvoll. 
+Die eigentliche Funktion ist flexibel: Sie ermöglicht Authentifizierung und verschiedene Arten von Request-Handling in HTTP-Servern.
+*/
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;

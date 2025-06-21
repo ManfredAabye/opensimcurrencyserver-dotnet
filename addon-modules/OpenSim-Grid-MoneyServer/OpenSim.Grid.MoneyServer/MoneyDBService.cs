@@ -13,6 +13,53 @@
  * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+Funktion
+Die Klasse MoneyDBService implementiert ein Datenbank-Interface für einen Währungsserver (IMoneyDBService). 
+Sie verwaltet u.a. Benutzerkonten, Transaktionen, Transfers, Guthaben und Fehlerprotokollierung über eine MySQL-Datenbank.
+Null-Pointer-Checks & Fehlerquellen
+
+1. Konstruktor und Initialisierung
+    Es gibt einen string-Parameter-Konstruktor und einen parameterlosen Konstruktor.
+    Der Initialisierungsprozess prüft, ob der Connection-String leer ist (if (connectionString != string.Empty)), aber nicht explizit auf null.
+    → Ein null-Wert könnte zu einem Fehler führen, bevor Zeile 74 erreicht wird.
+
+2. DB-Verbindungsmanagement
+    GetLockedConnection() prüft, ob die Verbindungsanzahl korrekt gesetzt ist und ob ein Connection-Objekt im Pool existiert.
+    Bei fehlender Verbindung wird ein Fehler geloggt und eine Exception geworfen (KeyNotFoundException).
+    Die Methode ist robust gegen NullPointer, solange die Initialisierung korrekt verlief.
+
+3. Methoden für Datenbankoperationen
+    Fast alle Datenbankmethoden sind in try-catch-finally-Blöcke gekapselt:
+        Nach MySQL-Fehlern wird ein Reconnect versucht und die Operation wiederholt.
+        Bei anderen Exceptions wird ein Fehler geloggt und ein sinnvoller Rückgabewert geliefert (z.B. 0, false, oder leere Objekte).
+        Ressourcenfreigabe (dbm.Release()) geschieht immer im finally-Block, was Memory Leaks vorbeugt.
+    Rückgabewerte von Methoden wie FetchTransaction werden auf null geprüft, bevor sie weiterverwendet werden.
+    Methoden, die Objekte aus der DB holen, geben bei Fehlern null oder leere Listen zurück.
+
+4. SQL- und Parameterhandling
+    Vor SQL-Operationen werden die Parameter korrekt gesetzt.
+    Es gibt keine offensichtlichen SQL-Injection-Lücken, da überall Parameter verwendet werden.
+
+5. Typische Fehlerquellen
+    Fehlende Null-Checks bei Eingaben: Die meisten Methoden prüfen nicht explizit, ob string-Parameter wie userID oder agentId null oder leer sind. Das könnte zu Fehlern führen, wenn solche Werte übergeben werden.
+    Release von Verbindungen: In einigen Methoden (z.B. DoTransfer, DoAddMoney) wird die Verbindung teilweise vorzeitig bei Fehlern freigegeben, aber insgesamt ist das Ressourcenmanagement solide.
+    Fehlende Existenzprüfungen: Manche Methoden gehen davon aus, dass DB-Objekte wie TransactionData oder UserInfo existieren und korrekt initialisiert sind.
+
+6. Sonstige Fehlerbehandlung
+    Fehler werden fast immer geloggt (m_log.ErrorFormat, m_log.Error).
+    In kritischen Fällen werden Exceptions weitergeworfen, in anderen Fällen gibt es Fallback-Rückgaben ohne Exception.
+
+Zusammenfassung
+    Funktion:
+    Verwaltung des Währungsverkehrs (Konten, Transaktionen, Guthaben) für OpenSim über eine MySQL-Datenbank.
+    NullPointer/Fehlerquellen:
+        Fast überall sauber gegen NullPointer und Datenbankfehler abgesichert (try-catch-finally).
+        Mögliche Risiken bei Methodenparametern, die nicht explizit auf null geprüft werden.
+        Bei fehlerhafter Initialisierung oder fehlerhaftem Connection-String kann es zu Start-Exceptions kommen.
+    Verbesserungspotential:
+        Zusätzliche Null-Checks und Plausibilitätsprüfungen für alle Methodenparameter.
+        Noch mehr Logging in Ausnahmefällen.
  */
 
 using log4net;
