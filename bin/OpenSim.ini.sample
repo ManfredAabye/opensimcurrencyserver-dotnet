@@ -1,51 +1,55 @@
 [Economy]
-    ;; Enables selling.
+    ;; Enables selling objects in-world. Set to false to disable all selling functionality.
     SellEnabled = true
 
-    ;CurrencyServer = "" ;;  ex.) "https://opensim.net:8008/"  Default is ""
+    ;CurrencyServer = "" ;;  Example: "https://opensim.net:8008/"  Default is ""
+    ;; The URL of your external Money Server. The placeholder "${Const|BaseURL}" will be replaced at runtime with your actual base URL.
     EconomyModule = DTLNSLMoneyModule
-	CurrencyServer = "${Const|BaseURL}:8008/"
-	UserServer = "${Const|BaseURL}:8002/"
-	
-	CheckServerCert = false
-	
-    ;; Money Unit fee to upload textures, animations etc.  Default is 0.
+    CurrencyServer = "${Const|BaseURL}:8008/"
+    ;; The UserServer is typically on port 8002, used for avatar and user account management.
+    UserServer = "${Const|BaseURL}:8002/"
+
+    ;; Set to true to enable SSL/TLS certificate verification for the Money Server. For testing, false is safer. For production, true is recommended.
+    CheckServerCert = false
+
+    ;; The fee (in in-world currency units) to upload textures, animations etc. Default is 0 (free uploads).
     PriceUpload = 0
 
-    ;; Mesh upload factors
+    ;; Mesh upload cost multipliers. Adjust these to change the price for uploading mesh models and textures.
+    ;; 1.0 means default cost, higher values increase the cost.
     MeshModelUploadCostFactor = 1.0
     MeshModelUploadTextureCostFactor = 1.0
     MeshModelMinCostFactor = 1.0
 
-    ;; Money Unit fee to create groups.  Default is 0.
+    ;; The fee (in in-world currency units) to create a new group. Default is 0 (creating groups is free).
     PriceGroupCreate = 0
-	
-	;; We don't really know what the rest of these values do.  These get sent to the client
-    ;; These taken from Agni at a Public Telehub.  Change at your own risk.
-    ObjectCount = 0
-    PriceEnergyUnit = 0
-    PriceObjectClaim = 0
-    PricePublicObjectDecay = 0
-    PricePublicObjectDelete = 0
-    PriceParcelClaim = 0
-    PriceParcelClaimFactor = 1
 
-    PriceRentLight = 0
-    TeleportMinPrice = 0
-    TeleportPriceExponent = 2
-    EnergyEfficiency = 1
-    PriceObjectRent = 0
-    PriceObjectScaleFactor = 10
-    PriceParcelRent = 0
-	
-	; Mesh upload settings, independent of economymodule
-	
-	; Create inventory entries for textures uploaded with a model
-	; default is false, ie, do not create
-	; MeshModelAllowTextureToInventory = true
+    ;; The following values are sent to the viewer, but are not always used by OpenSim itself.
+    ;; Their impact may depend on the viewer or custom modules—change only if you know what you want to achieve!
+    ObjectCount = 0                  ;; Number of allowed objects (sent to client, often ignored)
+    PriceEnergyUnit = 0              ;; Cost per energy unit (seldom used)
+    PriceObjectClaim = 0             ;; Cost to claim an object (usually zero)
+    PricePublicObjectDecay = 0       ;; Cost when a public object decays (rarely used)
+    PricePublicObjectDelete = 0      ;; Cost to delete a public object (rarely used)
+    PriceParcelClaim = 0             ;; Cost to claim a parcel of land
+    PriceParcelClaimFactor = 1       ;; Multiplier for parcel claim cost
 
-    ;; Avatar Class for HG Avatar
-    ;; {ForeignAvatar, HGAvatar, GuestAvatar, LocalAvatar} HGAvatar
-    ;; HG Avatar is assumed as a specified avatar class. Default is HGAvatar
-    ;; Processing for each avatar class is dependent on Money Server settings.
+    PriceRentLight = 0               ;; Cost to rent a light (seldom used)
+    TeleportMinPrice = 0             ;; Minimum cost for teleportation (usually zero)
+    TeleportPriceExponent = 2        ;; Exponent for calculating teleport costs (rarely changed)
+    EnergyEfficiency = 1             ;; Efficiency factor, usually 1 (default)
+    PriceObjectRent = 0              ;; Cost to rent an object (seldom used)
+    PriceObjectScaleFactor = 10      ;; Scale factor for object-related costs (adjust as needed)
+    PriceParcelRent = 0              ;; Cost to rent a parcel (usually zero)
+
+    ; Mesh upload settings, these options work regardless of the economy module you use.
+
+    ; If true, textures uploaded with a mesh model are also added to the user's inventory.
+    ; Default is false (textures are not added separately).
+    ; MeshModelAllowTextureToInventory = true
+
+    ;; Avatar Class for HG Avatar:
+    ;; Possible values: ForeignAvatar, HGAvatar, GuestAvatar, LocalAvatar.
+    ;; Default is HGAvatar. This setting determines how HyperGrid avatars are handled.
+    ;; The actual processing for each avatar class depends on the configuration of your Money Server.
     ;HGAvatarAs = "HGAvatar"    
