@@ -102,6 +102,43 @@ namespace OpenSim.Grid.MoneyServer
 
         public readonly object connectionLock = new object();
 
+        //public void Initialise(string connectionString, int maxDBConnections)
+        //{
+        //    lock (connectionLock)
+        //    {
+        //        if (maxDBConnections <= 0)
+        //        {
+        //            throw new ArgumentException("maxDBConnections must be greater than zero", nameof(maxDBConnections));
+        //        }
+
+        //        //m_log.InfoFormat("[Initialise]: Setting m_maxConnections to {0}", maxDBConnections);
+        //        m_connect = connectionString;
+        //        m_maxConnections = maxDBConnections;
+
+        //        //m_log.InfoFormat("[Initialise]: m_maxConnections is now {0}", m_maxConnections);
+
+        //        if (connectionString != string.Empty)
+        //        {
+        //            for (int i = 0; i < m_maxConnections; i++)
+        //            {
+        //                //m_log.Info("Connecting to DB... [" + i + "]");
+        //                MySQLSuperManager msm = new MySQLSuperManager(connectionString);
+        //                m_dbconnections.Add(i, msm);
+        //            }
+        //        }
+        //        else
+        //        {
+        //            m_log.Error("[MONEY DB]: Connection string is null, initialise database failed");
+        //            throw new Exception("Failed to initialise MySql database");
+        //        }
+        //    }
+        //}
+
+        private const int MAX_ALLOWED_CONNECTIONS = 100;
+
+        // Ersetze die Methode Initialise, damit die Verbindungen im Pool korrekt angelegt werden.
+        // Füge außerdem eine Schutzmaßnahme in GetLockedConnection hinzu, damit der Index nie außerhalb des Bereichs liegt.
+
         public void Initialise(string connectionString, int maxDBConnections)
         {
             lock (connectionLock)
@@ -110,34 +147,34 @@ namespace OpenSim.Grid.MoneyServer
                 {
                     throw new ArgumentException("maxDBConnections must be greater than zero", nameof(maxDBConnections));
                 }
-
-                //m_log.InfoFormat("[Initialise]: Setting m_maxConnections to {0}", maxDBConnections);
+                if (maxDBConnections > MAX_ALLOWED_CONNECTIONS)
+                {
+                    throw new ArgumentException($"maxDBConnections must not exceed {MAX_ALLOWED_CONNECTIONS}", nameof(maxDBConnections));
+                }
                 m_connect = connectionString;
                 m_maxConnections = maxDBConnections;
 
-                //m_log.InfoFormat("[Initialise]: m_maxConnections is now {0}", m_maxConnections);
-
-                if (connectionString != string.Empty)
-                {
-                    for (int i = 0; i < m_maxConnections; i++)
-                    {
-                        //m_log.Info("Connecting to DB... [" + i + "]");
-                        MySQLSuperManager msm = new MySQLSuperManager(connectionString);
-                        m_dbconnections.Add(i, msm);
-                    }
-                }
-                else
+                if (connectionString == string.Empty)
                 {
                     m_log.Error("[MONEY DB]: Connection string is null, initialise database failed");
                     throw new Exception("Failed to initialise MySql database");
                 }
+
+                // Verbindungen im Pool anlegen!
+                m_dbconnections.Clear();
+                for (int i = 0; i < m_maxConnections; i++)
+                {
+                    MySQLSuperManager msm = new MySQLSuperManager(connectionString);
+                    m_dbconnections.Add(i, msm);
+                }
             }
         }
+
+        // Optional: Zusätzlicher Schutz in GetLockedConnection
         public MySQLSuperManager GetLockedConnection()
         {
             lock (connectionLock)
             {
-                //m_log.InfoFormat("[GetLockedConnection]: m_maxConnections is {0}", m_maxConnections);
                 if (m_maxConnections == 0)
                 {
                     throw new InvalidOperationException("m_maxConnections cannot be zero.");
@@ -147,15 +184,19 @@ namespace OpenSim.Grid.MoneyServer
                 while (true)
                 {
                     m_lastConnect++;
-                    //m_log.DebugFormat("GetLockedConnection: m_lastConnect incremented to {0}", m_lastConnect);
-
                     if (m_lastConnect == int.MaxValue)
                     {
                         m_lastConnect = 0;
-                        //m_log.Debug("GetLockedConnection: m_lastConnect overflow, resetting to 0");
                     }
 
                     int index = m_lastConnect % m_maxConnections;
+                    // Schutz: Index muss im Bereich liegen
+                    if (index < 0 || index >= m_maxConnections)
+                    {
+                        m_log.ErrorFormat("GetLockedConnection: Index {0} out of range (0..{1})", index, m_maxConnections - 1);
+                        index = 0;
+                    }
+
                     if (!m_dbconnections.ContainsKey(index))
                     {
                         m_log.ErrorFormat("GetLockedConnection: Invalid connection index {0}", index);
@@ -163,17 +204,13 @@ namespace OpenSim.Grid.MoneyServer
                     }
 
                     MySQLSuperManager msm = m_dbconnections[index];
-                    //m_log.DebugFormat("GetLockedConnection: Checking connection {0} for lock", msm);
                     if (!msm.Locked)
                     {
                         msm.GetLock();
-                        //m_log.DebugFormat("GetLockedConnection: Connection {0} locked successfully", msm);
                         return msm;
                     }
 
                     lockedCons++;
-                    //m_log.DebugFormat("GetLockedConnection: Connection {0} is locked, trying next one. lockedCons: {1}", msm, lockedCons);
-
                     if (lockedCons > m_maxConnections)
                     {
                         lockedCons = 0;
@@ -209,17 +246,23 @@ namespace OpenSim.Grid.MoneyServer
             //m_log.Debug("Reconnect attempt completed.");
         }
          
+
+
+        // Plan:
+        // 1. Stelle sicher, dass alle Datenbankoperationen ausschließlich über MySQLSuperManager und dessen Manager laufen.
+        // 2. Entferne alle direkten MySqlConnection-Zugriffe (z.B. in giveMoney und getBalance), die nicht den Pool nutzen.
+        // 3. Implementiere die Methoden so, dass sie immer dbm.Manager verwenden und die Verbindung korrekt freigeben.
+
         public int getBalance(string userID)
         {
             MySQLSuperManager dbm = GetLockedConnection();
-
             try
             {
                 return dbm.Manager.getBalance(userID);
             }
-            catch (MySql.Data.MySqlClient.MySqlException e)
+            catch (MySqlException e)
             {
-                e.ToString();
+                m_log.Error(e);
                 dbm.Manager.Reconnect();
                 return dbm.Manager.getBalance(userID);
             }
@@ -331,36 +374,29 @@ namespace OpenSim.Grid.MoneyServer
                 dbm.Release();
             }
         }
+        // Beispiel für die Methode giveMoney:
+
         public bool giveMoney(UUID transactionID, string receiverID, int amount)
         {
             MySQLSuperManager dbm = GetLockedConnection();
-            //m_log.Debug("giveMoney: Got locked connection");
-
-            //m_log.DebugFormat("giveMoney: Trying to give {0} units to {1} with transaction ID {2}", amount, receiverID, transactionID);          
-
             try
             {
-                //m_log.Debug("giveMoney: Trying to execute giveMoney on database");
-                bool result = dbm.Manager.giveMoney(transactionID, receiverID, amount);
-                //m_log.DebugFormat("giveMoney: giveMoney on database returned {0}", result);
-                return result;
+                return dbm.Manager.giveMoney(transactionID, receiverID, amount);
             }
-            catch (MySql.Data.MySqlClient.MySqlException e)
+            catch (MySqlException e)
             {
-                m_log.ErrorFormat("giveMoney: MySqlException caught: {0}", e.Message);
+                m_log.Error(e);
                 dbm.Manager.Reconnect();
-                //m_log.Debug("giveMoney: Reconnected to database");
                 return dbm.Manager.giveMoney(transactionID, receiverID, amount);
             }
             catch (Exception e)
             {
-                m_log.ErrorFormat("giveMoney: Exception caught: {0}", e.Message);
+                m_log.Error(e);
                 return false;
             }
             finally
             {
                 dbm.Release();
-                //m_log.Debug("giveMoney: Released connection");
             }
         }
 
@@ -774,8 +810,11 @@ namespace OpenSim.Grid.MoneyServer
             }
         }
 
-        /// <summary>Does the transfer.</summary>
-        /// <param name="transactionUUID">The transaction UUID.</param>
+        // Pseudocode-Plan:
+        // 1. Prüfe in DoTransfer, ob Sender und Empfänger identisch sind.
+        // 2. Logge einen Fehler und breche die Transaktion ab, falls dies der Fall ist.
+        // 3. Ergänze die Logik, damit der Fehler eindeutig im Log erscheint.
+
         public bool DoTransfer(UUID transactionUUID)
         {
             MySQLSuperManager dbm = GetLockedConnection();
@@ -787,6 +826,14 @@ namespace OpenSim.Grid.MoneyServer
 
             if (transaction != null && transaction.Status == (int)Status.PENDING_STATUS)
             {
+                // NEU: Prüfe auf Selbst-Transfer
+                if (transaction.Sender == transaction.Receiver)
+                {
+                    m_log.ErrorFormat("[MONEY DB]: DoTransfer: Transfer von {0} zu sich selbst ist nicht erlaubt.", transaction.Sender);
+                    dbm.Release();
+                    return false;
+                }
+
                 int balance = getBalance(transaction.Sender);
 
                 //check the amount
