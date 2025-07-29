@@ -107,6 +107,7 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
         public MySqlConnection dbcon;
 
 
+        // Korrigierte Initialisierung des Connection-Strings mit Pooling-Check
         public MySQLMoneyManager(string hostname, string database, string username, string password, string cpooling, string port)
         {
             var requiredParameters = new[] { hostname, database, username, password, cpooling, port };
@@ -116,7 +117,23 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
                 throw new ArgumentException("All connection parameters must be provided.");
             }
 
-            string connectionString = $"Server={hostname};Port={port};Database={database};User ID={username};Password={password};Pooling={cpooling};";
+            // Pooling-Parameter prüfen und ggf. setzen
+            string poolingValue = cpooling?.Trim().ToLower();
+            if (string.IsNullOrEmpty(poolingValue) || poolingValue == "true" || poolingValue == "yes" || poolingValue == "1")
+            {
+                poolingValue = "true";
+            }
+            else if (poolingValue == "false" || poolingValue == "no" || poolingValue == "0")
+            {
+                poolingValue = "false";
+            }
+            else
+            {
+                // Fallback auf Standardwert
+                poolingValue = "true";
+            }
+
+            string connectionString = $"Server={hostname};Port={port};Database={database};User ID={username};Password={password};Pooling={poolingValue};";
             Initialise(connectionString);
         }
 
