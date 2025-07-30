@@ -64,9 +64,6 @@ Zusammenfassung
 
 using log4net;
 using MySql.Data.MySqlClient;
-
-using Mysqlx.Crud;
-using Mysqlx.Notice;
 using OpenMetaverse;
 using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
 using OpenSim.Modules.Currency;

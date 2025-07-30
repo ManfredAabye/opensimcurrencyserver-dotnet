@@ -335,6 +335,8 @@ namespace OpenSim.Grid.MoneyServer
             m_BalanceMessageSendMoney = m_server_config.GetString("BalanceMessageSendMoney", m_BalanceMessageSendMoney);
             m_BalanceMessageReceiveMoney = m_server_config.GetString("BalanceMessageReceiveMoney", m_BalanceMessageReceiveMoney);
 
+
+
             // [Certificate] Section
 
             // XML RPC to Region Server (Client Mode)
