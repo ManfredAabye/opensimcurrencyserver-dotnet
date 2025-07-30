@@ -52,12 +52,6 @@ Die Klasse ist solide und sicher gegen NullPointer-Fehler. Fehler beim Mutex-Han
 Lediglich das Feld Running ist ungenutzt und könnte entfernt oder implementiert werden.
  */
 
-using MySqlX.XDevAPI;
-
-using OpenMetaverse.ImportExport.Collada14;
-
-using OpenSim.Data.MySQL.MySQLMoneyDataWrapper;
-
 using System;
 using System.Diagnostics;
 using System.Runtime.ConstrainedExecution;
@@ -65,12 +59,17 @@ using System.Threading;
 
 namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
 {
-    public class MySQLSuperManager(string connectionString)
+    public class MySQLSuperManager
     {
         public bool Locked { get; private set; }
         private readonly Mutex m_lock = new(false);
-        public MySQLMoneyManager Manager { get; } = new MySQLMoneyManager(connectionString);
+        public MySQLMoneyManager Manager { get; }
         public string Running;
+
+        public MySQLSuperManager(string connectionString)
+        {
+            Manager = new MySQLMoneyManager(connectionString);
+        }
 
         /// <summary>Erwirbt die exklusive Sperre für kritische Operationen.</summary>
         public void GetLock()
@@ -88,7 +87,7 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Ein Fehler beim Freigeben des Mutex ist aufgetreten: {ex.Message}");
+                Console.WriteLine($"An error occurred while releasing the mutex: {ex.Message}");
                 throw;
             }
             finally
