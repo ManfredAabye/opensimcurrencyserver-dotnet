@@ -1,99 +1,108 @@
 [Startup]
 ; Path to create the PID file for identifying the process.
-PIDFile = "/tmp/money.pid"
+PIDFile = "/tmp/MoneyServer.exe.pid"
 
 [MySql]
 ; MySQL database connection settings:
-hostname = "localhost"           ; Hostname of the MySQL server.
-database = "robust"              ; Name of the database to use.
-username = "opensim"             ; Username for database access.
-password = "opensim"             ; Password for database access.
-pooling  = "true"                ; Enable connection pooling (true/false).
-port = "3306"                    ; MySQL server port (default: 3306).
-MaxConnection = "25"             ; Maximum number of connections in the pool.
+hostname = "localhost"
+database = "robust"
+username = "User"
+password = "UserPasswd"
+pooling = "true"
+port = "3306"
+MaxConnection = "25"
+
+;[JsonApi]
+;ApiKey = User131063
+;AllowedUser = User
 
 [MoneyServer]
-; Port number on which the MoneyServer listens.
-ServerPort = 8008
+; Port number for the MoneyServer.
+ServerPort = "8008"
 
-; Enable or disable the currency system ("on" to enable, "off" to disable).
-CurrencyOnOff = on
+; Json API zugang
+ApiKey = User131063
+AllowedUser = User
 
-; Maximum amount of currency a user can hold.
-CurrencyMaximum = 20000
+; Enable or disable the currency system (on/off).
+CurrencyOnOff = "on"
 
-; URL or IP address where the MoneyServer can be reached.
-MoneyServerIPaddress = "http://127.0.0.1:8008"
+; Maximum currency allowed for any user.
+CurrencyMaximum = "20000"
+
+; URL or IP address of the MoneyServer.
+MoneyServerIPaddress = "http://GridServerAdress.org:8008"
 
 ; Default starting balance for new users.
-DefaultBalance = 1000
+DefaultBalance = "1000"
 
-; Restrict currency purchases to members of a specific group (true/false).
-CurrencyGroupOnly = true
+; Restrict currency purchases to specific group members (true/false).
+CurrencyGroupOnly = true;
 ; Group ID required for currency purchases (UUID format).
-CurrencyGroupID = "00000000-0000-0000-0000-000000000000"
+CurrencyGroupID = "00000000-0000-0000-0000-000000000000";
 
 ; Require email verification for currency purchases (true/false).
-UserMailLock = true
+UserMailLock = true;
 
-; Allow transactions with an amount of zero (true/false, default: false).
+; Enable transactions with a 0 amount (default: false).
 EnableAmountZero = true
 
-; Cost multiplier for each unit of currency purchased (integer value).
+; Cost multiplier for each unit of currency.
 CalculateCurrency = 10
 
-; UUID of the avatar designated as the "banker".
-; Use "00000000-0000-0000-0000-000000000000" to allow all avatars, or leave blank to disable the banker function.
+; UUID of the avatar designated as the banker. 
+; Use "00000000-0000-0000-0000-000000000000" to allow all avatars, or leave blank to disable.
 BankerAvatar = "00000000-0000-0000-0000-000000000000"
 
-; Allow forced money transfers via scripts (true/false).
-EnableForceTransfer = true
+; Enable forced money transfers via scripts (true/false).
+EnableForceTransfer = "true"
 ; Allow scripts to send money (true/false).
-EnableScriptSendMoney = true
+EnableScriptSendMoney = "true"
 
 ; Default balances for HyperGrid and guest users.
-HGAvatarDefaultBalance = 500
-GuestAvatarDefaultBalance = 500
+HGAvatarDefaultBalance = "500"
+GuestAvatarDefaultBalance = "500"
 
 ; Access key and IP address for MoneyScript integration.
 MoneyScriptAccessKey  = "123456789"
-MoneyScriptIPaddress  = "127.0.0.1"
+MoneyScriptIPaddress  = "123.123.123.123"
 
 ; Enable currency support for HyperGrid and guest avatars (true/false).
-EnableHGAvatar = true
-EnableGuestAvatar = true
+EnableHGAvatar = "true"
+EnableGuestAvatar = "true"
 
-; Messages shown to users when their balance is updated.
+; Messages displayed to users when their balance is updated. 
 ; Use {0} for the amount, {1} for the other party's name, and {2} for object names.
-BalanceMessageSendGift     = "Sent Gift L${0} to {1}."
-BalanceMessageReceiveGift  = "Received Gift L${0} from {1}."
-BalanceMessagePayCharge    = "Paid the Money L${0} for creation."
-BalanceMessageBuyObject    = "Bought the Object {2} from {1} by L${0}."
-BalanceMessageSellObject   = "{1} bought the Object {2} by L${0}."
-BalanceMessageLandSale     = "Paid the Money L${0} for Land."
-BalanceMessageScvLandSale  = "Paid the Money L${0} for Land."
-BalanceMessageGetMoney     = "Got the Money L${0} from {1}."
-BalanceMessageBuyMoney     = "Bought the Money L${0}."
-BalanceMessageRollBack     = "RollBack the Transaction: L${0} from/to {1}."
-BalanceMessageSendMoney    = "Paid the Money L${0} to {1}."
-BalanceMessageReceiveMoney = "Received L${0} from {1}."
+BalanceMessageSendGift     = "Sent Gift L${0} to {1}."                ; For sending gifts.
+BalanceMessageReceiveGift  = "Received Gift L${0} from {1}."         ; For receiving gifts.
+BalanceMessagePayCharge    = "Paid the Money L${0} for creation."    ; For charges (e.g., uploads).
+BalanceMessageBuyObject    = "Bought the Object {2} from {1} by L${0}." ; For object purchases.
+BalanceMessageSellObject   = "{1} bought the Object {2} by L${0}."   ; For object sales.
+BalanceMessageLandSale     = "Paid the Money L${0} for Land."        ; For land purchases.
+BalanceMessageScvLandSale  = "Paid the Money L${0} for Land."        ; For land sales revenue.
+BalanceMessageGetMoney     = "Got the Money L${0} from {1}."         ; For receiving money from objects.
+BalanceMessageBuyMoney     = "Bought the Money L${0}."               ; For currency purchases.
+BalanceMessageRollBack     = "RollBack the Transaction: L${0} from/to {1}." ; For rollbacks.
+BalanceMessageSendMoney    = "Paid the Money L${0} to {1}."          ; For sending money.
+BalanceMessageReceiveMoney = "Received L${0} from {1}."              ; For receiving money.
 
 [Certificate]
+; Sufficient configuration for the certificates is already done in OpenSimulator.
+; This should be disabled here.
+
 ; Certificate settings for secure connections:
 
-; CA certificate for verifying client/server certificates.
+; CA certificate to validate client/server certificates.
 ;CACertFilename = "cacert.crt"
 
-; Server SSL certificate (for HTTPS server mode).
+; HTTPS server certificate (server mode).
 ;ServerCertFilename = "server_cert.p12"
 ;ServerCertPassword = "opensim"
 
-; Enable verification of client certificates (true/false).
-CheckClientCert = false
+; Enable client certificate verification (true/false).
+CheckClientCert = "false"
 
-; Enable verification of server certificates (true/false).
-CheckServerCert = false
-
-; Client certificate (for authentication with other servers).
+; Enable server certificate verification (true/false).
+CheckServerCert = "false"
 ;ClientCertFilename = "client_cert.p12"
 ;ClientCertPassword = "opensim"
