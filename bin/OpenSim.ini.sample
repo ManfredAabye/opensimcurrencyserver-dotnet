@@ -1,55 +1,96 @@
 [Economy]
-    ;; Enables selling objects in-world. Set to false to disable all selling functionality.
-    SellEnabled = true
+; The gaming economy module used: https://github.com/ManfredAabye/opensimcurrencyserver-dotnet
+; To use other modules, this setting must be overridden
+; economymodule = BetaGridLikeMoneyModule
+EconomyModule = DTLNSLMoneyModule
 
-    ;CurrencyServer = "" ;;  Example: "https://opensim.net:8008/"  Default is ""
-    ;; The URL of your external Money Server. The placeholder "${Const|BaseURL}" will be replaced at runtime with your actual base URL.
-    EconomyModule = DTLNSLMoneyModule
-    CurrencyServer = "${Const|BaseURL}:8008/"
-    ;; The UserServer is typically on port 8002, used for avatar and user account management.
-    UserServer = "${Const|BaseURL}:8002/"
+; The URL of the economy service.
+; This must match the grid economy setting (also known as helperURI or CurrencyServer, etc)
+; Robust.ini: economy = "${Const|BaseURL}:8008/"
+CurrencyServer = ${Const|BaseURL}:8008/
+UserServer = ${Const|BaseURL}:8002/
+CheckServerCert = false
 
-    ;; Set to true to enable SSL/TLS certificate verification for the Money Server. For testing, false is safer. For production, true is recommended.
-    CheckServerCert = false
+;# {SellEnabled} {} {Enable selling for 0?} {true false} true
+;; The default economy module only implements enough to allow free actions (object transfers, etc).
+;; There is no intention to implement more in the OpenSimulator core.
+;; This functionality must be provided by third-party modules.
+;; Enables selling items for $0. Default is true.
+SellEnabled = true
 
-    ;; The fee (in in-world currency units) to upload textures, animations etc. Default is 0 (free uploads).
-    PriceUpload = 0
+;# {PriceUpload} {} {Price for uploads?} {} 0
+;; Fee in currency units for uploading textures, animations, etc. Default is 0.
+PriceUpload = 0
 
-    ;; Mesh upload cost multipliers. Adjust these to change the price for uploading mesh models and textures.
-    ;; 1.0 means default cost, higher values increase the cost.
-    MeshModelUploadCostFactor = 1.0
-    MeshModelUploadTextureCostFactor = 1.0
-    MeshModelMinCostFactor = 1.0
+;# {PriceGroupCreate} {} {Fee for creating a group} {} 0
+;; Fee in currency units for creating groups. Default is 0.
+PriceGroupCreate = 0
 
-    ;; The fee (in in-world currency units) to create a new group. Default is 0 (creating groups is free).
-    PriceGroupCreate = 0
+;# {MeshModelUploadCostFactor} {} {Cost factor for uploading mesh models} {} 1.0
+;; Defines the cost factor for uploading a mesh model. Default is 1.0.
+MeshModelUploadCostFactor = 1.0
 
-    ;; The following values are sent to the viewer, but are not always used by OpenSim itself.
-    ;; Their impact may depend on the viewer or custom modules—change only if you know what you want to achieve!
-    ObjectCount = 0                  ;; Number of allowed objects (sent to client, often ignored)
-    PriceEnergyUnit = 0              ;; Cost per energy unit (seldom used)
-    PriceObjectClaim = 0             ;; Cost to claim an object (usually zero)
-    PricePublicObjectDecay = 0       ;; Cost when a public object decays (rarely used)
-    PricePublicObjectDelete = 0      ;; Cost to delete a public object (rarely used)
-    PriceParcelClaim = 0             ;; Cost to claim a parcel of land
-    PriceParcelClaimFactor = 1       ;; Multiplier for parcel claim cost
+;# {MeshModelUploadTextureCostFactor} {} {Cost factor for textures in mesh models} {} 1.0
+;; Defines the cost for uploaded textures in a mesh model. Default is 1.0.
+MeshModelUploadTextureCostFactor = 1.0
 
-    PriceRentLight = 0               ;; Cost to rent a light (seldom used)
-    TeleportMinPrice = 0             ;; Minimum cost for teleportation (usually zero)
-    TeleportPriceExponent = 2        ;; Exponent for calculating teleport costs (rarely changed)
-    EnergyEfficiency = 1             ;; Efficiency factor, usually 1 (default)
-    PriceObjectRent = 0              ;; Cost to rent an object (seldom used)
-    PriceObjectScaleFactor = 10      ;; Scale factor for object-related costs (adjust as needed)
-    PriceParcelRent = 0              ;; Cost to rent a parcel (usually zero)
+;# {MeshModelMinCostFactor} {} {Minimum cost factor for mesh models} {} 1.0
+;; Sets the minimum price charged for uploading a mesh model. Default is 1.0.
+MeshModelMinCostFactor = 1.0
 
-    ; Mesh upload settings, these options work regardless of the economy module you use.
+;# {ObjectCount} {} {Maximum number of objects} {} 0
+;; Defines how many objects a user can own at most. Default is 0 (no limit).
+ObjectCount = 0
 
-    ; If true, textures uploaded with a mesh model are also added to the user's inventory.
-    ; Default is false (textures are not added separately).
-    ; MeshModelAllowTextureToInventory = true
+;# {PriceEnergyUnit} {} {Price per energy unit} {} 0
+;; Specifies how much one energy unit costs. Default is 0.
+PriceEnergyUnit = 0
 
-    ;; Avatar Class for HG Avatar:
-    ;; Possible values: ForeignAvatar, HGAvatar, GuestAvatar, LocalAvatar.
-    ;; Default is HGAvatar. This setting determines how HyperGrid avatars are handled.
-    ;; The actual processing for each avatar class depends on the configuration of your Money Server.
-    ;HGAvatarAs = "HGAvatar"    
+;# {PriceObjectClaim} {} {Price for claiming an object} {} 0
+;; Cost for claiming an object in the system. Default is 0.
+PriceObjectClaim = 0
+
+;# {PricePublicObjectDecay} {} {Cost for decay of public objects} {} 0
+;; Specifies whether and how much is charged for automatic decay of public objects. Default is 0.
+PricePublicObjectDecay = 0
+
+;# {PricePublicObjectDelete} {} {Cost for deleting public objects} {} 0
+;; Indicates whether deleting public objects costs money. Default is 0.
+PricePublicObjectDelete = 0
+
+;# {PriceParcelClaim} {} {Price for claiming a parcel} {} 0
+;; Cost for taking over a parcel. Default is 0.
+PriceParcelClaim = 0
+
+;# {PriceParcelClaimFactor} {} {Multiplier for parcel prices} {} 1
+;; Factor that influences the price of a parcel. Default is 1.
+PriceParcelClaimFactor = 1
+
+;# {PriceRentLight} {} {Price for renting a light source} {} 0
+;; Cost for renting a light source. Default is 0.
+PriceRentLight = 0
+
+;# {TeleportMinPrice} {} {Minimum price for teleportation} {} 0
+;; Defines the minimum cost for teleporting. Default is 0.
+TeleportMinPrice = 0
+
+;# {TeleportPriceExponent} {} {Exponent for calculating teleport costs} {} 2
+;; Determines how strongly teleport costs increase with distance. Default is 2.
+TeleportPriceExponent = 2
+
+;# {EnergyEfficiency} {} {Efficiency of energy usage} {} 1
+;; Indicates how efficiently energy is used. Default is 1.
+EnergyEfficiency = 1
+
+;# {PriceObjectRent} {} {Price for renting an object} {} 0
+;; Cost for renting an object in the system. Default is 0.
+PriceObjectRent = 0
+
+;# {PriceObjectScaleFactor} {} {Scaling factor for object prices} {} 10
+;; Defines how object prices are scaled. Default is 10.
+PriceObjectScaleFactor = 10
+
+;# {PriceParcelRent} {} {Price for renting a parcel} {} 0
+;; Cost for renting a parcel. Default is 0.
+PriceParcelRent = 0
+
