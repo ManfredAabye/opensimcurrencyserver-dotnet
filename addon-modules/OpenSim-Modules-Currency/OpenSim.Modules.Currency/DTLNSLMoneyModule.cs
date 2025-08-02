@@ -1787,6 +1787,27 @@ namespace OpenSim.Modules.Currency
             bool ret = false;
             m_settle_user = false;
 
+            // Find the scene for this region
+            Scene scene = null;
+            lock (m_sceneList)
+            {
+                foreach (Scene _scene in m_sceneList.Values)
+                {
+                    if (_scene.RegionInfo.RegionID == regionUUID || _scene.RegionInfo.RegionHandle == regionHandle)
+                    {
+                        scene = _scene;
+                        break;
+                    }
+                }
+            }
+
+            // Ensure region is registered with MoneyServer before proceeding
+            if (scene != null && !EnsureRegionRegistered(scene))
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: AddBankerMoney: Failed to register region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                return false;
+            }
+
             if (m_enable_server)
             {
                 // Fill parameters for money transfer XML-RPC.   
@@ -1972,6 +1993,13 @@ namespace OpenSim.Modules.Currency
             {
                 Scene scene = (Scene)client.Scene;
                 string userName = string.Empty;
+
+                // Ensure region is registered with MoneyServer before client login
+                if (!EnsureRegionRegistered(scene))
+                {
+                    m_log.ErrorFormat("[MONEY MODULE]: LoginMoneyServer: Failed to register region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                    return false;
+                }
 
                 // Get the username for the login user.
                 if (client.Scene is Scene)
