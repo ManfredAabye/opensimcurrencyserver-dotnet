@@ -16,68 +16,68 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Funktion
-    DTLNSLMoneyModule ist ein OpenSim-Regionmodul für die Verwaltung eines eigenen Währungssystems und die Anbindung an einen externen MoneyServer.
+    DTLNSLMoneyModule ist ein OpenSim-Regionmodul fï¿½r die Verwaltung eines eigenen Wï¿½hrungssystems und die Anbindung an einen externen MoneyServer.
     Es implementiert die Schnittstellen IMoneyModule und ISharedRegionModule.
     Kernfunktionen:
-        Verwaltung von Guthaben (Balance), Transaktionen und Gebühren für verschiedene In-World-Aktionen (z.B. Objektkauf, Landkauf, Uploads).
+        Verwaltung von Guthaben (Balance), Transaktionen und Gebï¿½hren fï¿½r verschiedene In-World-Aktionen (z.B. Objektkauf, Landkauf, Uploads).
         Kommunikation mit einem externen MoneyServer via XML-RPC (Transfer, Login, Logoff, Balance-Abfrage, etc.).
-        Ereignis- und Event-Handling für Inworld-Transaktionen.
-        Zertifikatsverwaltung für sichere Kommunikation.
+        Ereignis- und Event-Handling fï¿½r Inworld-Transaktionen.
+        Zertifikatsverwaltung fï¿½r sichere Kommunikation.
 
 Null Pointer Checks
     Konfigurationswerte: Werden mit Defaultwerten initialisiert (string.Empty, false, 0 usw.). Viele Konfigurationswerte werden mit Fallback-Werten geladen.
-    Methoden mit Objektrückgabe wie GetLocateClient, GetLocateScene, GetLocatePrim:
-        Es wird geprüft, ob Rückgabewerte null sind, bevor sie genutzt werden (z.B. in ObjectGiveMoney, Transfer, etc.).
+    Methoden mit Objektrï¿½ckgabe wie GetLocateClient, GetLocateScene, GetLocatePrim:
+        Es wird geprï¿½ft, ob Rï¿½ckgabewerte null sind, bevor sie genutzt werden (z.B. in ObjectGiveMoney, Transfer, etc.).
     Client- und Scene-Objekte:
         Wird ein Objekt nicht gefunden, wird mit return oder Fehlerwerten sauber abgebrochen.
     RPC-Handler:
-        Prüfen, ob erforderliche Felder im Parameter-Hashtable existieren, bevor sie genutzt werden.
+        Prï¿½fen, ob erforderliche Felder im Parameter-Hashtable existieren, bevor sie genutzt werden.
     Try-Catch bei XML-RPC:
-        Netzwerkfehler und Exceptions werden sauber abgefangen und führen zu Fehler-Hash als Rückgabe.
+        Netzwerkfehler und Exceptions werden sauber abgefangen und fï¿½hren zu Fehler-Hash als Rï¿½ckgabe.
     Event-Handler:
-        Überall wird geprüft, ob das Event-Objekt oder der Client existiert, bevor darauf zugegriffen wird.
+        ï¿½berall wird geprï¿½ft, ob das Event-Objekt oder der Client existiert, bevor darauf zugegriffen wird.
     Beispiel:
     C#
 
     SceneObjectPart sceneObj = GetLocatePrim(objectID);
     if (sceneObj == null) return false;
 
-    Rückgabewerte können null sein:
-        Es wird überall mit null als Fehlerfall gerechnet (besonders bei Lookups und DB/Network-Kommunikation).
+    Rï¿½ckgabewerte kï¿½nnen null sein:
+        Es wird ï¿½berall mit null als Fehlerfall gerechnet (besonders bei Lookups und DB/Network-Kommunikation).
 
 Fehlerquellen und deren Behandlung
     Konfiguration:
-        Fehlende oder falsche Konfiguration wird geloggt und führt zum Abbruch der Initialisierung.
+        Fehlende oder falsche Konfiguration wird geloggt und fï¿½hrt zum Abbruch der Initialisierung.
     RPC-Fehler:
-        Bei Netzwerkproblemen oder fehlerhaften Antworten vom MoneyServer wird immer ein Fehlerobjekt erstellt und ausführlich geloggt.
+        Bei Netzwerkproblemen oder fehlerhaften Antworten vom MoneyServer wird immer ein Fehlerobjekt erstellt und ausfï¿½hrlich geloggt.
     Fehlende Objekte/Clients:
-        Fast überall wird geprüft, ob Objekte, Clients oder Rückgabewerte wirklich existieren, bevor sie verwendet werden.
-    Fehlende Berechtigungen oder unzulässige Aktionen:
-        Z.B. if (!m_sellEnabled) return; – Aktionen werden abgebrochen, wenn sie nicht erlaubt sind.
+        Fast ï¿½berall wird geprï¿½ft, ob Objekte, Clients oder Rï¿½ckgabewerte wirklich existieren, bevor sie verwendet werden.
+    Fehlende Berechtigungen oder unzulï¿½ssige Aktionen:
+        Z.B. if (!m_sellEnabled) return; ï¿½ Aktionen werden abgebrochen, wenn sie nicht erlaubt sind.
     Transaktionsfehler:
-        Jede Transaktion prüft, ob die Übertragung erfolgreich war, und gibt false zurück oder loggt den Fehler.
+        Jede Transaktion prï¿½ft, ob die ï¿½bertragung erfolgreich war, und gibt false zurï¿½ck oder loggt den Fehler.
 
-Typische Pattern für Sicherheit und Fehlervermeidung
+Typische Pattern fï¿½r Sicherheit und Fehlervermeidung
     Locking:
-        Zugriff auf die Szenenliste ist mit lock (m_sceneList) geschützt.
+        Zugriff auf die Szenenliste ist mit lock (m_sceneList) geschï¿½tzt.
     Null-Checks:
-        Überall vor der Nutzung von Rückgabewerten, Event-Objekten, Parametern.
+        ï¿½berall vor der Nutzung von Rï¿½ckgabewerten, Event-Objekten, Parametern.
     Logging:
-        Fehler und Sonderfälle werden ausführlich geloggt.
+        Fehler und Sonderfï¿½lle werden ausfï¿½hrlich geloggt.
     Try/Catch:
         Insbesondere bei externen Netzwerkzugriffen.
 
 Zusammenfassung & Bewertung
     Null Pointer:
-    Der gesamte Code ist sehr gewissenhaft in Bezug auf Null Pointer – überall werden Objekte auf null geprüft, bevor sie verwendet werden.
+    Der gesamte Code ist sehr gewissenhaft in Bezug auf Null Pointer ï¿½ ï¿½berall werden Objekte auf null geprï¿½ft, bevor sie verwendet werden.
     Fehlerquellen:
-    Externe Fehler (Netzwerk, Konfiguration) werden geloggt und führen zu sauberem Abbruch. Rückgabewerte im Fehlerfall (z.B. null oder false) sind klar definiert und werden behandelt.
+    Externe Fehler (Netzwerk, Konfiguration) werden geloggt und fï¿½hren zu sauberem Abbruch. Rï¿½ckgabewerte im Fehlerfall (z.B. null oder false) sind klar definiert und werden behandelt.
     Funktion:
-    Sehr umfangreiches Modul zur sicheren Verwaltung von Währungen und Transaktionen in OpenSim, mit Anbindung an einen externen Server und vielen Schutzmechanismen.
+    Sehr umfangreiches Modul zur sicheren Verwaltung von Wï¿½hrungen und Transaktionen in OpenSim, mit Anbindung an einen externen Server und vielen Schutzmechanismen.
 
 Fazit:
-Der Code ist robust gegenüber NullPointerException und typischen Fehlern. Fehlerquellen werden gut abgefangen, Logging ist umfassend.
-Die gesamte Struktur entspricht gängiger C#-Best-Practice für modulare, fehlertolerante Server-Module.
+Der Code ist robust gegenï¿½ber NullPointerException und typischen Fehlern. Fehlerquellen werden gut abgefangen, Logging ist umfassend.
+Die gesamte Struktur entspricht gï¿½ngiger C#-Best-Practice fï¿½r modulare, fehlertolerante Server-Module.
  */
 
 using System;
@@ -197,6 +197,9 @@ namespace OpenSim.Modules.Currency
  
         private Dictionary<UUID, int> m_moneyServer = new Dictionary<UUID, int>();
 
+        // Track regions registered with MoneyServer
+        private HashSet<UUID> m_registeredRegions = new HashSet<UUID>();
+
         // Events  
         public event ObjectPaid OnObjectPaid;
 
@@ -261,7 +264,7 @@ namespace OpenSim.Modules.Currency
         {
             m_log.InfoFormat("[MONEY MODULE]: Initialise started.");
 
-            // Überprüfen, ob die Konfigurationsquelle null ist.
+            // ï¿½berprï¿½fen, ob die Konfigurationsquelle null ist.
             if (source == null)
             {
                 m_log.ErrorFormat("[MONEY MODULE]: Initialise aborted - source is null.");
@@ -280,7 +283,7 @@ namespace OpenSim.Modules.Currency
                     return;
                 }
 
-                // Überprüfen, ob das Modul aktiviert ist
+                // ï¿½berprï¿½fen, ob das Modul aktiviert ist
                 if (economyConfig.GetString("EconomyModule") != Name)
                 {
                     m_log.InfoFormat("[MONEY MODULE]: Initialise - DTL/NSL MoneyModule is disabled.");
@@ -289,14 +292,14 @@ namespace OpenSim.Modules.Currency
 
                 m_log.InfoFormat("[MONEY MODULE]: Initialise - DTL/NSL MoneyModule is enabled.");
 
-                // Konfiguration für Verkauf und MoneyServer-URL
+                // Konfiguration fï¿½r Verkauf und MoneyServer-URL
                 m_sellEnabled = economyConfig.GetBoolean("SellEnabled", m_sellEnabled);
                 m_log.InfoFormat("[MONEY MODULE]: SellEnabled set to {0}", m_sellEnabled);
 
                 m_moneyServURL = economyConfig.GetString("CurrencyServer", m_moneyServURL);
                 m_log.InfoFormat("[MONEY MODULE]: CurrencyServer set to {0}", m_moneyServURL);
 
-                // Konfiguration für Client-Zertifizierung
+                // Konfiguration fï¿½r Client-Zertifizierung
                 m_certFilename = economyConfig.GetString("ClientCertFilename", m_certFilename);
                 m_certPassword = economyConfig.GetString("ClientCertPassword", m_certPassword);
                 if (!string.IsNullOrEmpty(m_certFilename))
@@ -309,7 +312,7 @@ namespace OpenSim.Modules.Currency
                     m_log.Warn("[MONEY MODULE]: No client certificate filename provided.");
                 }
 
-                // Konfiguration für Server-Zertifikatüberprüfung
+                // Konfiguration fï¿½r Server-Zertifikatï¿½berprï¿½fung
                 m_checkServerCert = economyConfig.GetBoolean("CheckServerCert", m_checkServerCert);
                 m_cacertFilename = economyConfig.GetString("CACertFilename", m_cacertFilename);
 
@@ -324,7 +327,7 @@ namespace OpenSim.Modules.Currency
                     m_log.Warn("[MONEY MODULE]: No CA certificate filename provided; server certificate check disabled.");
                 }
 
-                // Konfiguration für Settlement
+                // Konfiguration fï¿½r Settlement
                 m_use_web_settle = economyConfig.GetBoolean("SettlementByWeb", m_use_web_settle);
                 m_log.InfoFormat("[MONEY MODULE]: SettlementByWeb set to {0}", m_use_web_settle);
 
@@ -357,7 +360,7 @@ namespace OpenSim.Modules.Currency
                 EnergyEfficiency = economyConfig.GetFloat("EnergyEfficiency", EnergyEfficiency);
                 m_log.InfoFormat("[MONEY MODULE]: Price settings loaded successfully.");
 
-                // Konfiguration für HG-Avatar-Typ
+                // Konfiguration fï¿½r HG-Avatar-Typ
                 string avatarClass = economyConfig.GetString("HGAvatarAs", "HGAvatar").ToLower();
                 m_hg_avatarClass = avatarClass switch
                 {
@@ -440,6 +443,12 @@ namespace OpenSim.Modules.Currency
 
             m_log.InfoFormat("[MONEY MODULE]: AddRegion: {0}", scene.RegionInfo.RegionName);
 
+            // Register this region with the MoneyServer if enabled
+            if (m_enable_server && !string.IsNullOrEmpty(m_moneyServURL))
+            {
+                EnsureRegionRegistered(scene);
+            }
+
         }
 
 
@@ -464,6 +473,12 @@ namespace OpenSim.Modules.Currency
                 scene.EventManager.OnLandBuy -= processLandBuy;
 
                 m_log.InfoFormat("[MONEY MODULE]: RemoveRegion: {0}", scene.RegionInfo.RegionName);
+
+                // Remove region from registered regions list
+                lock (m_registeredRegions)
+                {
+                    m_registeredRegions.Remove(scene.RegionInfo.RegionID);
+                }
             }
         }
 
@@ -1284,7 +1299,17 @@ namespace OpenSim.Modules.Currency
                         string secureid = (string)requestParam["clientSecureSessionID"];
                         if (client != null && secureid == client.SecureSessionId.ToString() && (sessionid == UUID.Zero.ToString() || sessionid == client.SessionId.ToString()))
                         {
-                            balance = QueryBalanceFromMoneyServer(client);
+                            // Ensure region is registered with MoneyServer before proceeding
+                            Scene scene = GetLocateScene(clientUUID);
+                            if (scene != null && !EnsureRegionRegistered(scene))
+                            {
+                                m_log.ErrorFormat("[MONEY MODULE]: GetBalanceHandler: Failed to register region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                                balance = -1;
+                            }
+                            else
+                            {
+                                balance = QueryBalanceFromMoneyServer(client);
+                            }
                         }
                     }
                 }
@@ -1535,6 +1560,14 @@ namespace OpenSim.Modules.Currency
                 return false;
             }
 
+            // Ensure region is registered with MoneyServer before proceeding
+            Scene scene = GetLocateScene(sender);
+            if (scene != null && !EnsureRegionRegistered(scene))
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: TransferMoney: Failed to register region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                return false;
+            }
+
             if (QueryBalanceFromMoneyServer(senderClient) < amount)
             {
                 m_log.InfoFormat("[MONEY MODULE]: TransferMoney: No insufficient balance in client [{0}]", sender.ToString());
@@ -1593,6 +1626,30 @@ namespace OpenSim.Modules.Currency
         private bool ForceTransferMoney(UUID sender, UUID receiver, int amount, int type, UUID objectID, ulong regionHandle, UUID regionUUID, string description)
         {
             bool ret = false;
+
+            // Try to get the region from sender first, then from regionUUID if available
+            Scene scene = GetLocateScene(sender);
+            if (scene == null && regionUUID != UUID.Zero)
+            {
+                lock (m_sceneList)
+                {
+                    foreach (Scene _scene in m_sceneList.Values)
+                    {
+                        if (_scene.RegionInfo.RegionID == regionUUID)
+                        {
+                            scene = _scene;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Ensure region is registered with MoneyServer before proceeding
+            if (scene != null && !EnsureRegionRegistered(scene))
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: ForceTransferMoney: Failed to register region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                return false;
+            }
 
             if (m_enable_server)
             {
@@ -1790,6 +1847,14 @@ namespace OpenSim.Modules.Currency
                 return false;
             }
 
+            // Ensure region is registered with MoneyServer before proceeding
+            Scene scene = GetLocateScene(sender);
+            if (scene != null && !EnsureRegionRegistered(scene))
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: PayMoneyCharge: Failed to register region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                return false;
+            }
+
             if (QueryBalanceFromMoneyServer(senderClient) < amount)
             {
                 m_log.InfoFormat("[MONEY MODULE]: PayMoneyCharge: No insufficient balance in client [{0}]", sender.ToString());
@@ -1838,6 +1903,20 @@ namespace OpenSim.Modules.Currency
 
             if (client != null)
             {
+                // Ensure region is registered with MoneyServer before proceeding
+                Scene scene = GetLocateScene(client.AgentId);
+                if (scene != null && !EnsureRegionRegistered(scene))
+                {
+                    m_log.ErrorFormat("[MONEY MODULE]: QueryBalanceFromMoneyServer: Failed to register region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                    return 0;
+                }
+                // Ensure region is registered with MoneyServer before proceeding
+                Scene scene = GetLocateScene(client.AgentId);
+                if (scene != null && !EnsureRegionRegistered(scene))
+                {
+                    m_log.ErrorFormat("[MONEY MODULE]: QueryBalanceFromMoneyServer: Failed to register region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                    return 0;
+                }
                 if (m_enable_server)
                 {
                     Hashtable paramTable = new Hashtable();
@@ -2239,6 +2318,89 @@ namespace OpenSim.Modules.Currency
 
 
             return sceneObj;
+        }
+
+        
+        /// <summary>
+        /// Ensures that the region is registered with the MoneyServer before performing money operations.
+        /// This method checks if the region is already registered and registers it if necessary.
+        /// </summary>
+        /// <param name="scene">The scene/region to check and register</param>
+        /// <returns>True if the region is registered successfully, false otherwise</returns>
+        private bool EnsureRegionRegistered(Scene scene)
+        {
+            if (scene == null)
+            {
+                m_log.WarnFormat("[MONEY MODULE]: EnsureRegionRegistered: Scene is null");
+                return false;
+            }
+
+            UUID regionUUID = scene.RegionInfo.RegionID;
+            
+            // Check if region is already registered
+            lock (m_registeredRegions)
+            {
+                if (m_registeredRegions.Contains(regionUUID))
+                {
+                    return true; // Already registered
+                }
+            }
+
+            // Skip registration if money server is not enabled
+            if (!m_enable_server || string.IsNullOrEmpty(m_moneyServURL))
+            {
+                m_log.InfoFormat("[MONEY MODULE]: EnsureRegionRegistered: Money server not enabled, skipping registration for region {0}", scene.RegionInfo.RegionName);
+                lock (m_registeredRegions)
+                {
+                    m_registeredRegions.Add(regionUUID);
+                }
+                return true;
+            }
+
+            // Register the region with MoneyServer
+            try
+            {
+                Hashtable paramTable = new Hashtable();
+                paramTable["regionUUID"] = regionUUID.ToString();
+                paramTable["regionHandle"] = scene.RegionInfo.RegionHandle.ToString();
+                paramTable["regionName"] = scene.RegionInfo.RegionName;
+                paramTable["regionLocX"] = scene.RegionInfo.RegionLocX.ToString();
+                paramTable["regionLocY"] = scene.RegionInfo.RegionLocY.ToString();
+                paramTable["serverURI"] = scene.RegionInfo.ServerURI.Replace(scene.RegionInfo.InternalEndPoint.Port.ToString(),
+                                                                          scene.RegionInfo.HttpPort.ToString());
+
+                // Generate the request for region registration
+                Hashtable resultTable = genericCurrencyXMLRPCRequest(paramTable, "RegisterRegion");
+
+                // Handle the return values from Money Server
+                if (resultTable != null && resultTable.Contains("success"))
+                {
+                    if ((bool)resultTable["success"] == true)
+                    {
+                        lock (m_registeredRegions)
+                        {
+                            m_registeredRegions.Add(regionUUID);
+                        }
+                        m_log.InfoFormat("[MONEY MODULE]: EnsureRegionRegistered: Successfully registered region {0} with MoneyServer", scene.RegionInfo.RegionName);
+                        return true;
+                    }
+                    else
+                    {
+                        string errorMsg = resultTable.ContainsKey("message") ? (string)resultTable["message"] : "Unknown error";
+                        m_log.ErrorFormat("[MONEY MODULE]: EnsureRegionRegistered: Failed to register region {0}: {1}", scene.RegionInfo.RegionName, errorMsg);
+                    }
+                }
+                else
+                {
+                    m_log.ErrorFormat("[MONEY MODULE]: EnsureRegionRegistered: Invalid response from MoneyServer for region {0}", scene.RegionInfo.RegionName);
+                }
+            }
+            catch (Exception ex)
+            {
+                m_log.ErrorFormat("[MONEY MODULE]: EnsureRegionRegistered: Exception while registering region {0}: {1}", scene.RegionInfo.RegionName, ex);
+            }
+
+            return false;
         }
 
     }
