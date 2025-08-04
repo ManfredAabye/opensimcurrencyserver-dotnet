@@ -1,3 +1,8 @@
+[EstateManagement]
+    ; If false, then block any region restart requests from the client even if they are otherwise valid.
+    ; Default is true
+    AllowRegionRestartFromClient = false
+
 [Economy]
 ; The gaming economy module used: https://github.com/ManfredAabye/opensimcurrencyserver-dotnet
 ; To use other modules, this setting must be overridden
