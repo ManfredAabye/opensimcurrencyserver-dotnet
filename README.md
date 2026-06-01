@@ -1,9 +1,9 @@
 # OpenSimCurrencyServer DOTNET 2025
 
-<img src="https://ci.appveyor.com/api/projects/status/32r7s2skrgm9ubva?svg=true" alt="Project Badge" width="50">
+<img src="https://ci.appveyor.com/api/projects/status/32r7s2skrgm9ubva?svg=true" alt="Project Badge" width="150">
 
 
-<img src="https://github.com/ManfredAabye/opensimcurrencyserver-dotnet/blob/main/OpenSimCurrencyServerSmal.png" alt="Project Badge">
+<img src="https://github.com/ManfredAabye/opensimcurrencyserver-dotnet/blob/main/OpenSimCurrencyServerSmal.png" alt="Project Badge" width="450">
 
 
 Alle Bestandteile wurden auf Stabilität getestet, soweit es mit meinem Server möglich war. Zusätzlich wurden deutsche Informationen eingefügt, die den jeweiligen Code analysieren.
