@@ -29,7 +29,7 @@ The MoneyServer intercepts the helper messages and processes them internally.
 Testing Firestorm Viewer for OpenSim 7.1.11.76496 works.
 
 ### From the original DTL/NSL Money Server
-by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8.
+by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8 & DotNet10.
 
 ## New:
 
