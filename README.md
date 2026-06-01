@@ -16,7 +16,7 @@
 ## OpenSim Currency Server for OpenSim 0.9.3.1 Dev
 Windows Linux IOS DotNet 6.0 & Windows Linux IOS DotNet 8.0
 
-(Ubuntu 18 = DOTNET 6.0 - Ubuntu 20+ DOTNET 8.0)
+(Ubuntu 18 = DOTNET 6.0 - Ubuntu 20+ DOTNET 8.0 - Ubuntu 26+ DOTNET 8.0/10.0)
 
 Everything works so far.
 
