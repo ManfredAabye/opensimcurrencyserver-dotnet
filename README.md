@@ -1,19 +1,20 @@
 # OpenSimCurrencyServer DOTNET 2025
 
-<img src="https://ci.appveyor.com/api/projects/status/32r7s2skrgm9ubva?svg=true" alt="Project Badge" width="150">
+<img src="https://ci.appveyor.com/api/projects/status/32r7s2skrgm9ubva?svg=true" alt="Project Badge" width="50">
 
 
 <img src="https://github.com/ManfredAabye/opensimcurrencyserver-dotnet/blob/main/OpenSimCurrencyServerSmal.png" alt="Project Badge">
 
 
-### Alle Bestandteile wurden auf Stabilität getestet, soweit es mit meinem Server möglich war. Zusätzlich wurden deutsche Informationen eingefügt, die den jeweiligen Code analysieren.
-### All components have been tested for stability as far as possible with my server. In addition, German information has been added that analyzes the corresponding code.
+Alle Bestandteile wurden auf Stabilität getestet, soweit es mit meinem Server möglich war. Zusätzlich wurden deutsche Informationen eingefügt, die den jeweiligen Code analysieren.
 
-### Buying land without landtool.php is now possible.
+All components have been tested for stability as far as possible with my server. In addition, German information has been added that analyzes the corresponding code.
 
-### Buying currency without currency.php is now possible.
+Buying land without landtool.php is now possible.
 
-## OpenSim Currency Server for OpenSim 0.9.3.1 Dev
+Buying currency without currency.php is now possible.
+
+## OpenSim Currency Server for OpenSim 0.9.3
 Windows Linux IOS DotNet 6.0 & Windows Linux IOS DotNet 8.0
 
 (Ubuntu 18 = DOTNET 6.0 - Ubuntu 20+ DOTNET 8.0 - Ubuntu 26+ DOTNET 8.0/10.0)
