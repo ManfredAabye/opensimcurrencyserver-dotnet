@@ -12,16 +12,12 @@ pooling = "true"
 port = "3306"
 MaxConnection = "25"
 
-;[JsonApi]
-;ApiKey = User131063
-;AllowedUser = User
-
 [MoneyServer]
 ; Port number for the MoneyServer.
 ServerPort = "8008"
 
 ; Json API zugang
-ApiKey = User131063
+ApiKey = Userpassword
 AllowedUser = User
 
 ; Enable or disable the currency system (on/off).
