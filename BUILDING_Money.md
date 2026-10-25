@@ -5,6 +5,8 @@ get or update source from git
  `git clone git://opensimulator.org/git/opensim`
  
  `git clone https://github.com/ManfredAabye/opensimcurrencyserver-dotnet.git`
+
+ Copy the components into OpenSimulator
 	
  `copy "opensimcurrencyserver-dotnet/addon-modules" "opensim/"`
  
