@@ -3,9 +3,11 @@
 get or update source from git
 
  `git clone git://opensimulator.org/git/opensim`
+ 
  `git clone https://github.com/ManfredAabye/opensimcurrencyserver-dotnet.git`
 	
  `copy "opensimcurrencyserver-dotnet/addon-modules" "opensim/"`
+ 
  `copy "opensimcurrencyserver-dotnet/bin" "opensim/"`
 
 # Building on Windows
