@@ -87,6 +87,9 @@ On `[Architecture]` section uncomment only the line with Grid.ini if you do now 
 
 and copy the `GridCommon.ini.example` file to `GridCommon.ini` inside the `bin/config-include` directory and edit as necessary
 
+Please note: The MoneyServer only runs in the Grid mode of OpenSimulator.
+
+Startup sequence: Robust, MoneyServer, simulators.
 
 
 # References
