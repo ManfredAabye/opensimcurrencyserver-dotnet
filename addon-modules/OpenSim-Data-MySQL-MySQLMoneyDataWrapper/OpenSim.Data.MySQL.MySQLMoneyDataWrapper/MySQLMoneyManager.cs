@@ -15,41 +15,41 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Funktion
-Die Klasse MySQLMoneyManager implementiert das Interface IMoneyManager und ist das zentrale Datenbank-Backend für das OpenSim-Money-Modul (MySQL). Sie verwaltet:
+Die Klasse MySQLMoneyManager implementiert das Interface IMoneyManager und ist das zentrale Datenbank-Backend fÃ¼r das OpenSim-Money-Modul (MySQL). Sie verwaltet:
 
     Verbindungen zur MySQL-Datenbank
-    Kontostände (balances)
+    KontostÃ¤nde (balances)
     Transaktionen (transactions)
     Benutzerdaten (userinfo)
     Verkaufstatistiken (totalsales)
-    Methoden zum Ein-/Auszahlen, Übertragen, Anlegen und Aktualisieren von Werten
+    Methoden zum Ein-/Auszahlen, Ãœbertragen, Anlegen und Aktualisieren von Werten
 
 Null Pointer Checks & Fehlerquellen
 Initialisierung und DB-Verbindung
-    Die Constructoren prüfen per .Any(p => string.IsNullOrEmpty(p)), ob alle benötigten Parameter gesetzt sind. Bei Fehlwerten gibt es einen klaren Exception-Throw.
-    Beim Öffnen der Datenbankverbindung wird jeder Fehler per Exception behandelt.
+    Die Constructoren prÃ¼fen per .Any(p => string.IsNullOrEmpty(p)), ob alle benÃ¶tigten Parameter gesetzt sind. Bei Fehlwerten gibt es einen klaren Exception-Throw.
+    Beim Ã–ffnen der Datenbankverbindung wird jeder Fehler per Exception behandelt.
     In allen Methoden, die auf die DB-Verbindung zugreifen, wird dbcon verwendet, das zentral initialisiert wird.
 
 Datenbankoperationen
-    Try-Catch-Blöcke sind an allen kritischen Stellen vorhanden, etwa beim Table-Setup, bei der Reconnect-Logik und bei Datenbankzugriffen.
+    Try-Catch-BlÃ¶cke sind an allen kritischen Stellen vorhanden, etwa beim Table-Setup, bei der Reconnect-Logik und bei Datenbankzugriffen.
     Nach jedem Datenbankzugriff wird das Command-Objekt mit Dispose() freigegeben.
-    Beim Lesen von Datenbankwerten wird mit DBNull geprüft, ob ein Wert gesetzt ist, bevor er als String oder int gecastet wird.
-    Bei Methoden, die Objekte zurückgeben (z.B. FetchTransaction, fetchUserInfo), wird im Fehlerfall null zurückgegeben und im Catch geloggt.
+    Beim Lesen von Datenbankwerten wird mit DBNull geprÃ¼ft, ob ein Wert gesetzt ist, bevor er als String oder int gecastet wird.
+    Bei Methoden, die Objekte zurÃ¼ckgeben (z.B. FetchTransaction, fetchUserInfo), wird im Fehlerfall null zurÃ¼ckgegeben und im Catch geloggt.
 
 Null Pointer Checks
-    Bei Methoden wie addTransaction werden Objekteigenschaften vor Benutzung auf null geprüft und ggf. mit Defaultwerten gefüllt.
-    Bei Übergabeobjekten wie UserInfo wird vor dem Zugriff geprüft, ob z.B. Avatar null ist.
-    Rückgabewerte wie bei fetchUserInfo werden nur dann zurückgegeben, wenn die UserID wirklich gefunden wurde – sonst gibt es null.
-    Bei Methoden, die Listen zurückgeben (z.B. FetchTransaction(string userID, ...)), wird bei DB-Lesefehlern null oder ein leeres Array zurückgegeben.
+    Bei Methoden wie addTransaction werden Objekteigenschaften vor Benutzung auf null geprÃ¼ft und ggf. mit Defaultwerten gefÃ¼llt.
+    Bei Ãœbergabeobjekten wie UserInfo wird vor dem Zugriff geprÃ¼ft, ob z.B. Avatar null ist.
+    RÃ¼ckgabewerte wie bei fetchUserInfo werden nur dann zurÃ¼ckgegeben, wenn die UserID wirklich gefunden wurde â€“ sonst gibt es null.
+    Bei Methoden, die Listen zurÃ¼ckgeben (z.B. FetchTransaction(string userID, ...)), wird bei DB-Lesefehlern null oder ein leeres Array zurÃ¼ckgegeben.
 
 Fehlerquellen
     Fehlerhafte oder fehlende DB-Verbindung: Exception und Logging.
     SQL-Befehle mit Fehlern: Exception und Logging.
-    Ungültige Eingabewerte (z.B. null bei Strings/Objekten): Entweder direkter Return, Exception oder Logging.
+    UngÃ¼ltige Eingabewerte (z.B. null bei Strings/Objekten): Entweder direkter Return, Exception oder Logging.
     Potentielle Race-Conditions werden durch lock (dbcon) reduziert.
     Ressourcenlecks werden durch konsequentes .Dispose() der Commands/Reader vermieden.
 
-Positive Beispiele für Fehlerbehandlung
+Positive Beispiele fÃ¼r Fehlerbehandlung
 
     Parameter-Checks:
     C#
@@ -73,11 +73,11 @@ C#
 Zusammenfassung/Fazit
     Null Pointer: Das Risiko ist im Code durch Checks, Defaultwerte und Exception-Handling weitgehend minimiert.
     Fehlerquellen: Vor allem externe Faktoren (DB-Verbindung, SQL-Syntax). Im Code wird alles sauber abgefangen und geloggt.
-    Funktion: Umfassende Datenbank-Backend-Klasse für OpenSim-Money, mit Methoden für alle wichtigen Operationen (Balance, Transaktionen, User, Verkauf).
+    Funktion: Umfassende Datenbank-Backend-Klasse fÃ¼r OpenSim-Money, mit Methoden fÃ¼r alle wichtigen Operationen (Balance, Transaktionen, User, Verkauf).
 
 Empfehlung:
-Der Code ist für produktiven Einsatz geeignet, robust gegen NullPointer-Fehler und typische Fehlerquellen.
-Bei zukünftigen Erweiterungen empfiehlt sich: Bei allen Methoden, die Objekte oder komplexe Werte zurückgeben, weiterhin konsequent auf null prüfen und Exceptions sauber loggen.
+Der Code ist fÃ¼r produktiven Einsatz geeignet, robust gegen NullPointer-Fehler und typische Fehlerquellen.
+Bei zukÃ¼nftigen Erweiterungen empfiehlt sich: Bei allen Methoden, die Objekte oder komplexe Werte zurÃ¼ckgeben, weiterhin konsequent auf null prÃ¼fen und Exceptions sauber loggen.
  */
 
 using System;
@@ -105,6 +105,7 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
 
         private string connectString;
         public MySqlConnection dbcon;
+        private readonly object reconnectLock = new object();
 
 
         // Korrigierte Initialisierung des Connection-Strings mit Pooling-Check
@@ -117,7 +118,7 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
                 throw new ArgumentException("All connection parameters must be provided.");
             }
 
-            // Pooling-Parameter prüfen und ggf. setzen
+            // Pooling-Parameter prÃ¼fen und ggf. setzen
             string poolingValue = cpooling?.Trim().ToLower();
             if (string.IsNullOrEmpty(poolingValue) || poolingValue == "true" || poolingValue == "yes" || poolingValue == "1")
             {
@@ -147,7 +148,7 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
             // 1. Initialisiere Verbindungen
             InitialiseConnection(connect);
 
-            // 2. Überprüfe und erstelle Tabellen
+            // 2. ÃœberprÃ¼fe und erstelle Tabellen
             CheckAndCreateTables();
         }
 
@@ -166,7 +167,7 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
             }
         }
 
-        // 2. Überprüfe und erstelle Tabellen
+        // 2. ÃœberprÃ¼fe und erstelle Tabellen
         private void CheckAndCreateTables()
         {
             try
@@ -1027,21 +1028,31 @@ namespace OpenSim.Data.MySQL.MySQLMoneyDataWrapper
         }
 
 
+        // Reconnect using a stable lock. Never replace a connection while locking on
+        // that same connection instance, and never report a failed reconnect as success.
         public void Reconnect()
         {
-            m_log.Info("[MONEY MANAGER]: Reconnecting database");
-            lock (dbcon)
+            lock (reconnectLock)
             {
+                m_log.Info("[MONEY MANAGER]: Reconnecting database");
+                MySqlConnection replacement = new MySqlConnection(connectString);
                 try
                 {
-                    dbcon.Close();
-                    dbcon = new MySqlConnection(connectString);
-                    dbcon.Open();
-                    m_log.Info("[MONEY MANAGER]: Reconnected  database");
+                    replacement.Open();
+                    MySqlConnection previous = dbcon;
+                    dbcon = replacement;
+                    if (previous != null)
+                    {
+                        try { previous.Dispose(); }
+                        catch (Exception e) { m_log.Warn("[MONEY MANAGER]: Could not dispose old database connection", e); }
+                    }
+                    m_log.Info("[MONEY MANAGER]: Reconnected database");
                 }
                 catch (Exception e)
                 {
-                    m_log.Error("[MONEY MANAGER]: Unable to reconnect to database: " + e.ToString());
+                    replacement.Dispose();
+                    m_log.Error("[MONEY MANAGER]: Unable to reconnect to database", e);
+                    throw;
                 }
             }
         }
