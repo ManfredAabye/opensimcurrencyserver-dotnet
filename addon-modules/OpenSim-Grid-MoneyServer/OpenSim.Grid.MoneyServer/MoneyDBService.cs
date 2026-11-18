@@ -204,7 +204,24 @@ namespace OpenSim.Grid.MoneyServer
                     if (!msm.Locked)
                     {
                         msm.GetLock();
-                        return msm;
+                        try
+                        {
+                            // A server restart can leave a MySqlConnection marked Open
+                            // although its underlying network session is gone.
+                            if (msm.Manager.dbcon == null || !msm.Manager.dbcon.Ping())
+                            {
+                                m_log.Warn("[MONEY DB]: Stale MySQL connection detected; reconnecting before the next operation.");
+                                msm.Manager.Reconnect();
+                            }
+                            return msm;
+                        }
+                        catch (Exception e)
+                        {
+                            // Do not leak this slot when MySQL is still unavailable.
+                            msm.Release();
+                            m_log.Error("[MONEY DB]: Database unavailable; next request will attempt recovery", e);
+                            throw;
+                        }
                     }
 
                     lockedCons++;
@@ -357,9 +374,10 @@ namespace OpenSim.Grid.MoneyServer
             }
             catch (MySql.Data.MySqlClient.MySqlException e)
             {
-                e.ToString();
-                dbm.Manager.Reconnect();
-                return dbm.Manager.withdrawMoney(transactionID, senderID, amount);
+                m_log.ErrorFormat("[MONEY DB]: Withdrawal {0} has an uncertain outcome; do not retry automatically: {1}", transactionID, e);
+                try { dbm.Manager.Reconnect(); }
+                catch (Exception reconnectError) { m_log.Error("[MONEY DB]: Reconnect failed after withdrawal", reconnectError); }
+                return false;
             }
             catch (Exception e)
             {
@@ -382,9 +400,10 @@ namespace OpenSim.Grid.MoneyServer
             }
             catch (MySqlException e)
             {
-                m_log.Error(e);
-                dbm.Manager.Reconnect();
-                return dbm.Manager.giveMoney(transactionID, receiverID, amount);
+                m_log.ErrorFormat("[MONEY DB]: Credit {0} has an uncertain outcome; do not retry automatically: {1}", transactionID, e);
+                try { dbm.Manager.Reconnect(); }
+                catch (Exception reconnectError) { m_log.Error("[MONEY DB]: Reconnect failed after credit", reconnectError); }
+                return false;
             }
             catch (Exception e)
             {
@@ -425,25 +444,10 @@ namespace OpenSim.Grid.MoneyServer
             }
             catch (MySql.Data.MySqlClient.MySqlException e)
             {
-                m_log.ErrorFormat("[BuyMoney]: SQL Exception - {0}", e.Message);
-                dbm.Manager.Reconnect();
-
-                using (MySqlCommand cmd = new MySqlCommand(sql, dbm.Manager.dbcon))
-                {
-                    cmd.Parameters.AddWithValue("?amount", amount);
-                    cmd.Parameters.AddWithValue("?userID", userID);
-
-                    int rowsAffected = cmd.ExecuteNonQuery();
-                    bool result = (rowsAffected > 0);
-
-                    if (result)
-                    {
-                        LogTransaction(transactionID, userID, amount);
-                    }
-
-                    //m_log.DebugFormat("[BuyMoney]: End after Reconnect - transactionID: {0}, userID: {1}, amount: {2}, result: {3}", transactionID, userID, amount, result);
-                    return result;
-                }
+                m_log.ErrorFormat("[BuyMoney]: Transaction {0} has an uncertain outcome; no automatic credit retry: {1}", transactionID, e);
+                try { dbm.Manager.Reconnect(); }
+                catch (Exception reconnectError) { m_log.Error("[BuyMoney]: Reconnect failed after credit", reconnectError); }
+                return false;
             }
             catch (Exception e)
             {
@@ -812,85 +816,136 @@ namespace OpenSim.Grid.MoneyServer
         // 2. Logge einen Fehler und breche die Transaktion ab, falls dies der Fall ist.
         // 3. Ergänze die Logik, damit der Fehler eindeutig im Log erscheint.
 
+        // One transfer = one database transaction. Row locks and the transaction UUID
+        // prevent two concurrent requests from applying the same payment twice.
         public bool DoTransfer(UUID transactionUUID)
         {
+            TransactionData transaction = FetchTransaction(transactionUUID);
+            if (transaction == null || transaction.Status != (int)Status.PENDING_STATUS)
+                return false;
+
+            if (transaction.Sender == transaction.Receiver || transaction.Amount < 0)
+                return false;
+
             MySQLSuperManager dbm = GetLockedConnection();
+            bool committed = false;
 
-            bool do_trans = false;
-
-            TransactionData transaction = new TransactionData();
-            transaction = FetchTransaction(transactionUUID);
-
-            if (transaction != null && transaction.Status == (int)Status.PENDING_STATUS)
+            try
             {
-                // NEU: Prüfe auf Selbst-Transfer
-                if (transaction.Sender == transaction.Receiver)
+                MySqlConnection connection = dbm.Manager.dbcon;
+                using (MySqlTransaction sqlTransaction = connection.BeginTransaction())
                 {
-                    m_log.ErrorFormat("[MONEY DB]: DoTransfer: Transfer von {0} zu sich selbst ist nicht erlaubt.", transaction.Sender);
-                    dbm.Release();
-                    return false;
-                }
-
-                int balance = getBalance(transaction.Sender);
-
-                //check the amount
-                if (transaction.Amount >= 0 && balance >= transaction.Amount)
-                {
-                    if (withdrawMoney(transactionUUID, transaction.Sender, transaction.Amount))
+                    // The transaction row is the idempotency gate. A concurrent request
+                    // waits here and observes SUCCESS after the first request commits.
+                    int currentStatus;
+                    using (MySqlCommand cmd = new MySqlCommand(
+                        "SELECT status FROM transactions WHERE UUID = ?tranid FOR UPDATE", connection, sqlTransaction))
                     {
-                        //If receiver not found, add it to DB.
-                        if (getBalance(transaction.Receiver) == -1)
-                        {
-                            m_log.ErrorFormat("[MONEY DB]: DoTransfer: Receiver not found in balances table. {0}", transaction.Receiver);
-                            dbm.Release();
+                        cmd.Parameters.AddWithValue("?tranid", transactionUUID.ToString());
+                        object result = cmd.ExecuteScalar();
+                        if (result == null || result == DBNull.Value)
                             return false;
-                        }
+                        currentStatus = Convert.ToInt32(result);
+                    }
 
-                        if (giveMoney(transactionUUID, transaction.Receiver, transaction.Amount))
+                    if (currentStatus != (int)Status.PENDING_STATUS)
+                        return false;
+
+                    int senderBalance = 0;
+                    int receiverBalance = 0;
+                    bool systemSender = transaction.Sender == UUID.Zero.ToString();
+                    bool systemReceiver = transaction.Receiver == UUID.Zero.ToString();
+
+                    // Lock both account rows in a deterministic order to reduce deadlocks.
+                    List<string> accounts = new List<string>();
+                    if (!systemSender) accounts.Add(transaction.Sender);
+                    if (!systemReceiver) accounts.Add(transaction.Receiver);
+                    accounts.Sort(StringComparer.Ordinal);
+
+                    Dictionary<string, int> balances = new Dictionary<string, int>();
+                    foreach (string account in accounts)
+                    {
+                        using (MySqlCommand cmd = new MySqlCommand(
+                            "SELECT balance FROM balances WHERE user = ?userid FOR UPDATE", connection, sqlTransaction))
                         {
-                            do_trans = true;
-                        }
-                        else
-                        {	// give money to receiver failed. Refund Processing
-                            m_log.ErrorFormat("[MONEY DB]: Give money to receiver {0} failed", transaction.Receiver);
-                            //Return money to sender
-                            if (giveMoney(transactionUUID, transaction.Sender, transaction.Amount))
-                            {
-                                m_log.ErrorFormat("[MONEY DB]: give money to receiver {0} failed but return it to sender {1} successfully", transaction.Receiver, transaction.Sender);
-                                updateTransactionStatus(transactionUUID, (int)Status.FAILED_STATUS, "give money to receiver failed but return it to sender successfully");
-                            }
-                            else
-                            {
-                                m_log.ErrorFormat("[MONEY DB]: FATAL ERROR: Money withdrawn from sender: {0}, but failed to be given to receiver {1}",
-                                                        transaction.Sender, transaction.Receiver);
-                                updateTransactionStatus(transactionUUID, (int)Status.ERROR_STATUS, "give money to receiver failed, and return it to sender unsuccessfully!!!");
-                            }
+                            cmd.Parameters.AddWithValue("?userid", account);
+                            object result = cmd.ExecuteScalar();
+                            if (result == null || result == DBNull.Value)
+                                return false;
+                            balances.Add(account, Convert.ToInt32(result));
                         }
                     }
-                    else
-                    {	// withdraw money failed
-                        m_log.ErrorFormat("[MONEY DB]: Withdraw money from sender {0} failed", transaction.Sender);
-                    }
-                }
-                else
-                {	// not enough balance to finish the transaction
-                    m_log.ErrorFormat("[MONEY DB]: Not enough balance for user: {0} to apply the transaction.", transaction.Sender);
-                }
-            }
-            else
-            {	// Can not fetch the transaction or it has expired
-                m_log.ErrorFormat("[MONEY DB]: The transaction:{0} has expired", transactionUUID.ToString());
-            }
 
-            //
-            if (do_trans)
+                    if (!systemSender)
+                    {
+                        senderBalance = balances[transaction.Sender];
+                        if (senderBalance < transaction.Amount)
+                            return false;
+                        senderBalance -= transaction.Amount;
+                    }
+
+                    if (!systemReceiver)
+                        receiverBalance = checked(balances[transaction.Receiver] + transaction.Amount);
+
+                    if (!systemSender)
+                    {
+                        using (MySqlCommand cmd = new MySqlCommand(
+                            "UPDATE balances SET balance = ?balance WHERE user = ?userid", connection, sqlTransaction))
+                        {
+                            cmd.Parameters.AddWithValue("?balance", senderBalance);
+                            cmd.Parameters.AddWithValue("?userid", transaction.Sender);
+                            if (cmd.ExecuteNonQuery() != 1)
+                                return false;
+                        }
+                    }
+
+                    if (!systemReceiver)
+                    {
+                        using (MySqlCommand cmd = new MySqlCommand(
+                            "UPDATE balances SET balance = ?balance WHERE user = ?userid", connection, sqlTransaction))
+                        {
+                            cmd.Parameters.AddWithValue("?balance", receiverBalance);
+                            cmd.Parameters.AddWithValue("?userid", transaction.Receiver);
+                            if (cmd.ExecuteNonQuery() != 1)
+                                return false;
+                        }
+                    }
+
+                    using (MySqlCommand cmd = new MySqlCommand(
+                        "UPDATE transactions SET senderBalance = ?senderBalance, receiverBalance = ?receiverBalance, status = ?status WHERE UUID = ?tranid AND status = ?pending",
+                        connection, sqlTransaction))
+                    {
+                        cmd.Parameters.AddWithValue("?senderBalance", senderBalance);
+                        cmd.Parameters.AddWithValue("?receiverBalance", receiverBalance);
+                        cmd.Parameters.AddWithValue("?status", (int)Status.SUCCESS_STATUS);
+                        cmd.Parameters.AddWithValue("?pending", (int)Status.PENDING_STATUS);
+                        cmd.Parameters.AddWithValue("?tranid", transactionUUID.ToString());
+                        if (cmd.ExecuteNonQuery() != 1)
+                            return false;
+                    }
+
+                    sqlTransaction.Commit();
+                    committed = true;
+                }
+            }
+            catch (Exception e)
             {
-                setTotalSale(transaction);
+                // The outcome of a lost COMMIT acknowledgement is unknown.
+                // Never compensate or replay the debit/credit blindly.
+                m_log.ErrorFormat("[MONEY DB]: Transfer {0} could not be confirmed; inspect transaction status: {1}", transactionUUID, e);
+                return false;
+            }
+            finally
+            {
+                dbm.Release();
             }
 
-            dbm.Release();
-
-            return do_trans;
+            if (committed)
+            {
+                try { setTotalSale(transaction); }
+                catch (Exception e) { m_log.ErrorFormat("[MONEY DB]: Post-transfer sale statistics failed for {0}: {1}", transactionUUID, e); }
+            }
+            return committed;
         }
 
         // by Fumi.Iseki
