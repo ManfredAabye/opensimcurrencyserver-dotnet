@@ -26,7 +26,7 @@ The MoneyServer intercepts the helper messages and processes them internally.
      ; helper uri (for currency.php and landtool.php):
      economy = ${Const|BaseURL}:8008/
      
-Testing Firestorm Viewer for OpenSim 7.1.11.76496 works.
+Testing Firestorm Viewer for OpenSim 7.3.0.82943 works.
 
 ### From the original DTL/NSL Money Server
 by Fumi.Iseki and NSL http://www.nsl.tuis.ac.jp , here is a test revision for DotNet6 & DotNet8 & DotNet10.
