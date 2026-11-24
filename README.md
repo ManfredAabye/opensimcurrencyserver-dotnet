@@ -3,7 +3,7 @@
 <img src="https://ci.appveyor.com/api/projects/status/32r7s2skrgm9ubva?svg=true" alt="Project Badge" width="150">
 
 
-<img src="https://raw.githubusercontent.com/ManfredAabye/opensimcurrencyserver-dotnet/refs/heads/main/OpenSimCurrency1T.png" alt="Project Badge" width="450">
+<img src="https://raw.githubusercontent.com/ManfredAabye/opensimcurrencyserver-dotnet/refs/heads/main/Muenzen5b.png" alt="Project Badge" width="450">
 
 
 Alle Bestandteile wurden auf Stabilität getestet, soweit es mit meinem Server möglich war. Zusätzlich wurden deutsche Informationen eingefügt, die den jeweiligen Code analysieren.
