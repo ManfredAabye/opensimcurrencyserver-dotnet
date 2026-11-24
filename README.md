@@ -56,4 +56,4 @@ Various functions are still missing.
      ; Maximum per month:
      TotalMonth = 500;
 
-<img src="https://raw.githubusercontent.com/ManfredAabye/opensimcurrencyserver-dotnet/refs/heads/main/Muenzen2.png" alt="Project Badge" width="800">
+<img src="https://raw.githubusercontent.com/ManfredAabye/opensimcurrencyserver-dotnet/refs/heads/main/Muenzen6b.png" alt="Project Badge" width="800">
